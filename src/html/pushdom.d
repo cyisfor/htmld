@@ -1,5 +1,6 @@
 module html.pushdom;
 import html.dom: Document, Node, DOMBuilder, HTMLString;
+	import std.stdio: writeln;
 
 class NodeReceiver(Document) {
 	Builder!Document parent;
@@ -14,40 +15,59 @@ class NodeReceiver(Document) {
 	void onClose(Node* element) {}
 	void onCloseText(HTMLString text) {}
 	void onSelfClosing(Node* element) {
-		this.onClose(element);
+		if(element)
+			this.onClose(element);
 	}
 	void onDocumentEnd(Document* doc) {}
 }
 
 import std.string: replace;
-string toIgnore() {
+import std.format: format;
+string makeStubs(string prefix) {
 	string s = "";
+	void stub(string name, int args) {
+		string sargs = "";
+		string derpargs = "";
+		for(int i=0;i<args;++i) {
+			if(sargs != "") {
+				sargs ~= ", ";
+				derpargs ~= ", ";
+			}
+			auto arg = "a%d".format(i);
+			sargs ~= "HTMLString " ~ arg;
+			derpargs ~= arg;
+		}
+		s ~= q{
+			void @name@(@sargs@) {
+				@prefix@(@derpargs@);
+			}
+		}.replace("@name@",name)
+			  .replace("@sargs@",sargs)
+			  .replace("@derpargs@",derpargs)
+			  .replace("@prefix@",prefix);
+	}
 	foreach(name;["onText",
 				  "onOpenStart",
 				  "onAttrName",
-				  "onAttrEnd",
 				  "onAttrValue",
 				  "onComment",
-				  "onCData",
+				  "onCDATA",
 				  "onDeclaration",
 				  "onProcessingInstruction",
 				  "onNamedEntity",
-				  "onEntity",
 				  "onNumericEntity",
-				  "onHexEntity",
-				  
+				  "onHexEntity",				  
 				]) {
-		s ~= q{
-			void @name@(HTMLString derp) {
-			}
-		}.replace("@name@",name);
+		stub(name,1);
 	}
 	foreach(name;[
 				"onAttrEnd"]) {
-		s ~= q{
-			void @name@() {
-			}
-		}.replace("@name@",name);
+		stub(name,0);
+	}
+	foreach(name;[
+				  "onEntity",
+				]) {
+		stub(name,2);
 	}
 	return s;
 }
@@ -60,8 +80,8 @@ struct Builder(Document) {
 	}
 	NodeReceiver!Document receiver;
 	void onOpenEnd(HTMLString data) {
-		receiver.onOpenEnd(souper.element_);
 		souper.onOpenEnd(data);
+		receiver.onOpenEnd(souper.element_);
 	}
 	void onClose(HTMLString data) {
 		if(souper.element_) {
@@ -72,14 +92,15 @@ struct Builder(Document) {
 		souper.onClose(data);
 	}
 	void onSelfClosing() {
-		receiver.onSelfClosing(souper.element_);
+		if(souper.element_)
+			receiver.onSelfClosing(souper.element_);
 		souper.onSelfClosing();
 	}
 	void onDocumentEnd() {
 		souper.onDocumentEnd();
 		receiver.onDocumentEnd(souper.document_);
 	}
-	mixin(toIgnore());
+	mixin(makeStubs("souper."));
 }
 
 unittest {
@@ -90,10 +111,12 @@ unittest {
 	class ImageCollector(Document): NodeReceiver!Document {
 		Node*[] images;
 		Appender!(Node*[]) a;
-		this(Builder b) {
+		this(Builder!Document b) {
 			super(b);
 		}
 		override void onClose(Node* e) {
+			writeln("Uhh ",e);
+			assert(e);
 			if(e.tag == "img" && e.hasAttr("src")) {
 				a.put(e);
 			}
@@ -104,7 +127,7 @@ unittest {
 	}
 
 	enum parserOptions = ((DOMCreateOptions.Default & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
-
+	writeln("\n\n\n\n\n\n\n");
 	auto document = createDocument();
 	auto b = Builder!Document(document);
 	ImageCollector!Document c = new ImageCollector!Document(b);
@@ -123,7 +146,6 @@ unittest {
 	    </body>
     </html>`;
 	parseHTML!(typeof(b), parserOptions)(source, b);
-	import std.stdio: writeln;
 	writeln(document.root.html);
 	foreach(img; c.images) {
 		writeln("image: ",img.attr("src"));
