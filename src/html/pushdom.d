@@ -18,11 +18,11 @@ class NodeReceiver {
 
 class Builder: DOMBuilder!Document {
 	NodeReceiver receiver;
-	override void onOpenEnd(HTMLString data) {
+	void onOpenEnd(HTMLString data) {
 		receiver.onOpenEnd(element_);
 		super.onOpenEnd(data);
 	}
-	override void onClose(HTMLString data) {
+	void onClose(HTMLString data) {
 		super.onClose(data);
 		if(element_) {
 			receiver.onClose(element_);
@@ -30,11 +30,11 @@ class Builder: DOMBuilder!Document {
 			receiver.onCloseText(text_);
 		}
 	}
-	override void onSelfClosing() {
+	void onSelfClosing() {
 		super.onSelfClosing();
 		receiver.onSelfClosing(element_);
 	}
-	override void onDocumentEnd() {
+	void onDocumentEnd() {
 		super.onDocumentEnd();
 		receiver.onDocumentEnd(document_);
 	}
@@ -50,7 +50,7 @@ unittest {
 		this() {
 			a = Appender!(Node*[])(images);
 		}
-		override void onClose(Node* e) {
+		void onClose(Node* e) {
 			if(e.tag == "img" && e.hasAttr("src")) {
 				a.put(e);
 			}

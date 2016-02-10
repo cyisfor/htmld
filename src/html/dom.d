@@ -1213,7 +1213,7 @@ unittest {
 	
 }
 
-struct DOMBuilder(Document) {
+class DOMBuilder(Document) {
 	this(ref Document document, Node* parent = null) {
 		document_ = &document;
 		element_ = parent ? parent : document.root;
