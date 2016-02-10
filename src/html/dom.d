@@ -1337,7 +1337,7 @@ struct DOMBuilder(Document) {
 		}
 	}
 
-private:
+protected:
 	Document* document_;
 	Node* element_;
 	States state_;
