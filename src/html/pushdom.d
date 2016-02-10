@@ -26,7 +26,7 @@ import std.format: format;
 
 immutable string prefix = "souper.";
 
-string stub(string name, int nargs, string block = "@super@") {
+string wrapper(string name, int nargs, string block = "@super@") {
 	string arg_signature = "";
 	string args = "";
 	for(int i=0;i<nargs;++i) {
@@ -53,7 +53,7 @@ string stub(string name, int nargs, string block = "@super@") {
 		  .replace("@block@",block);
 }
 
-string makeBlankStubs() {
+string makeBlankWrappers() {
 	string s = "";
 
 	foreach(name;["onText",
@@ -68,16 +68,16 @@ string makeBlankStubs() {
 				  "onNumericEntity",
 				  "onHexEntity",				  
 				]) {
-		s ~= stub(name,1);
+		s ~= wrapper(name,1);
 	}
 	foreach(name;[
 				"onAttrEnd"]) {
-		s ~= stub(name,0);
+		s ~= wrapper(name,0);
 	}
 	foreach(name;[
 				  "onEntity",
 				]) {
-		s ~= stub(name,2);
+		s ~= wrapper(name,2);
 	}
 	return s;
 }
@@ -89,11 +89,11 @@ struct Builder(Document) {
 		souper = DOMBuilder!Document(document,parent);
 	}
 	NodeReceiver!Document receiver;
-	mixin(stub("onOpenEnd",1,q{
+	mixin(wrapper("onOpenEnd",1,q{
 				@super@;
 				receiver.onOpenEnd(souper.element_);
 			}));
-	mixin(stub("onClose",1,q{
+	mixin(wrapper("onClose",1,q{
 		if(souper.element_) {
 			receiver.onClose(souper.element_);
 		} else {
@@ -101,16 +101,16 @@ struct Builder(Document) {
 		}
 		@super@;
 			}));
-	mixin(stub("onSelfClosing",0,q{
+	mixin(wrapper("onSelfClosing",0,q{
 		if(souper.element_)
 			receiver.onSelfClosing(souper.element_);
 		@super@;
 			}));
-	mixin(stub("onDocumentEnd",0,q{
+	mixin(wrapper("onDocumentEnd",0,q{
 				@super@;
 				receiver.onDocumentEnd(souper.document_);
 			}));
-	mixin(makeBlankStubs());
+	mixin(makeBlankWrappers());
 }
 
 unittest {
