@@ -23,29 +23,34 @@ class NodeReceiver(Document) {
 
 import std.string: replace;
 import std.format: format;
+
+string stub(string prefix, string name, int nargs, string block = "@super@") {
+	string arg_signature = "";
+	string args = "";
+	for(int i=0;i<nargs;++i) {
+		if(arg_signature != "") {
+			arg_signature ~= ", ";
+			args ~= ", ";
+		}
+		auto arg = "a%d".format(i);
+		arg_signature ~= "HTMLString " ~ arg;
+		args ~= arg;
+	}
+	block = block.replace("@super@",
+						  prefix~"."~name~"("~args~")");
+	
+	return q{
+		void @name@(@arg_signature@) {
+			@block@;
+		}
+	}.replace("@name@",name)
+		  .replace("@arg_signature@",arg_signature)
+		  .replace("@block@",block);
+}
+
 string makeStubs(string prefix) {
 	string s = "";
-	void stub(string name, int args) {
-		string sargs = "";
-		string derpargs = "";
-		for(int i=0;i<args;++i) {
-			if(sargs != "") {
-				sargs ~= ", ";
-				derpargs ~= ", ";
-			}
-			auto arg = "a%d".format(i);
-			sargs ~= "HTMLString " ~ arg;
-			derpargs ~= arg;
-		}
-		s ~= q{
-			void @name@(@sargs@) {
-				@prefix@(@derpargs@);
-			}
-		}.replace("@name@",name)
-			  .replace("@sargs@",sargs)
-			  .replace("@derpargs@",derpargs)
-			  .replace("@prefix@",prefix);
-	}
+
 	foreach(name;["onText",
 				  "onOpenStart",
 				  "onAttrName",
@@ -58,16 +63,16 @@ string makeStubs(string prefix) {
 				  "onNumericEntity",
 				  "onHexEntity",				  
 				]) {
-		stub(name,1);
+		s ~= stub(name,1);
 	}
 	foreach(name;[
 				"onAttrEnd"]) {
-		stub(name,0);
+		s =~ stub(name,0);
 	}
 	foreach(name;[
 				  "onEntity",
 				]) {
-		stub(name,2);
+		s =~ stub(name,2);
 	}
 	return s;
 }
@@ -100,7 +105,7 @@ struct Builder(Document) {
 		souper.onDocumentEnd();
 		receiver.onDocumentEnd(souper.document_);
 	}
-	mixin(makeStubs("souper."));
+	mixin(makeStubs("souper"));
 }
 
 unittest {
