@@ -826,7 +826,7 @@ auto createDocument(size_t options = DOMCreateOptions.Default)(HTMLString source
 	enum parserOptions = ((options & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
 
 	auto document = createDocument();
-	auto builder = DOMBuilder!(Document)(document);
+	auto builder = new DOMBuilder!(Document)(document);
 
 	parseHTML!(typeof(builder), parserOptions)(source, builder);
 	return document;
@@ -1213,7 +1213,7 @@ unittest {
 	
 }
 
-class DOMBuilder(Document) {
+struct DOMBuilder(Document) {
 	this(ref Document document, Node* parent = null) {
 		document_ = &document;
 		element_ = parent ? parent : document.root;

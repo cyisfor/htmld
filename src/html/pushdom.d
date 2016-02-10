@@ -1,11 +1,14 @@
 module html.pushdom;
 import html.dom: Document, Node, DOMBuilder, HTMLString;
 
-class NodeReceiver {
-	Builder parent;
-	this(Builder parent) {
+class NodeReceiver(Document) {
+	Builder!Document parent;
+	this(Builder!Document parent) {
 		// for changing parent.receiver
 		this.parent = parent;
+	}
+	void swap(NodeReceiver!Document other) {
+		this.parent.receiver = other;
 	}
 	void onOpenEnd(Node* element) {}
 	void onClose(Node* element) {}
@@ -13,58 +16,63 @@ class NodeReceiver {
 	void onSelfClosing(Node* element) {
 		this.onClose(element);
 	}
-	void onDocumentEnd() {}
+	void onDocumentEnd(Document* doc) {}
 }
 
-class Builder: DOMBuilder!Document {
+struct Builder(Document) {
+	DOMBuilder!Document souper;
 	this(ref Document document, Node* parent = null) {
-		super(document,parent);
+		souper = DOMBuilder!Document(document,parent);
 	}
 	NodeReceiver receiver;
 	override void onOpenEnd(HTMLString data) {
 		receiver.onOpenEnd(element_);
-		super.onOpenEnd(data);
+		souper.onOpenEnd(data);
 	}
 	override void onClose(HTMLString data) {
-		super.onClose(data);
 		if(element_) {
 			receiver.onClose(element_);
 		} else {
 			receiver.onCloseText(text_);
 		}
+		souper.onClose(data);
 	}
 	override void onSelfClosing() {
-		super.onSelfClosing();
 		receiver.onSelfClosing(element_);
+		souper.onSelfClosing();
 	}
 	override void onDocumentEnd() {
-		super.onDocumentEnd();
+		souper.onDocumentEnd();
 		receiver.onDocumentEnd(document_);
 	}
 }
 
 unittest {
-	import dom: createDocument, DOMCreateOptions, ParserOptions;
+	import html.dom: createDocument, DOMCreateOptions, ParserOptions;
+	import html.parser: parseHTML;
 	import std.array: Appender;
-	
-	class ImageCollector: NodeReceiver {
+
+	class ImageCollector(Document): NodeReceiver {
 		Node*[] images;
 		Appender!(Node*[]) a;
-		this() {
-			a = Appender!(Node*[])(images);
+		this(Builder b) {
+			super(b);
 		}
 		override void onClose(Node* e) {
 			if(e.tag == "img" && e.hasAttr("src")) {
 				a.put(e);
 			}
 		}
+		override void onDocumentEnd(Document* d) {
+			images = a.data;
+		}
 	}
 
 	enum parserOptions = ((DOMCreateOptions.Default & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
 
 	auto document = createDocument();
-	Builder b = Builder(document);
-	ImageCollector c = ImageCollector(b);
+	auto b = new Builder!Document(document);
+	ImageCollector c = new ImageCollector(b);
 	b.receiver = c;
 	HTMLString source = `
 	<html>
@@ -79,9 +87,10 @@ unittest {
 			</p>
 	    </body>
     </html>`;
-	parseHTML!(typeof(builder), parserOptions)(source, builder);
-	writeln(document.html);
+	parseHTML!(typeof(b), parserOptions)(source, b);
+	import std.stdio: writeln;
+	writeln(document.root.html);
 	foreach(img; c.images) {
-		writeln("image: ",img.getAttr("src"));
+		writeln("image: ",img.attr("src"));
 	}
 }
