@@ -19,32 +19,67 @@ class NodeReceiver(Document) {
 	void onDocumentEnd(Document* doc) {}
 }
 
+import std.string: replace;
+string toIgnore() {
+	string s = "";
+	foreach(name;["onText",
+				  "onOpenStart",
+				  "onAttrName",
+				  "onAttrEnd",
+				  "onAttrValue",
+				  "onComment",
+				  "onCData",
+				  "onDeclaration",
+				  "onProcessingInstruction",
+				  "onNamedEntity",
+				  "onEntity",
+				  "onNumericEntity",
+				  "onHexEntity",
+				  
+				]) {
+		s ~= q{
+			void @name@(HTMLString derp) {
+			}
+		}.replace("@name@",name);
+	}
+	foreach(name;[
+				"onAttrEnd"]) {
+		s ~= q{
+			void @name@() {
+			}
+		}.replace("@name@",name);
+	}
+	return s;
+}
+
+
 struct Builder(Document) {
 	DOMBuilder!Document souper;
 	this(ref Document document, Node* parent = null) {
 		souper = DOMBuilder!Document(document,parent);
 	}
-	NodeReceiver receiver;
-	override void onOpenEnd(HTMLString data) {
-		receiver.onOpenEnd(element_);
+	NodeReceiver!Document receiver;
+	void onOpenEnd(HTMLString data) {
+		receiver.onOpenEnd(souper.element_);
 		souper.onOpenEnd(data);
 	}
-	override void onClose(HTMLString data) {
-		if(element_) {
-			receiver.onClose(element_);
+	void onClose(HTMLString data) {
+		if(souper.element_) {
+			receiver.onClose(souper.element_);
 		} else {
-			receiver.onCloseText(text_);
+			receiver.onCloseText(souper.text_);
 		}
 		souper.onClose(data);
 	}
-	override void onSelfClosing() {
-		receiver.onSelfClosing(element_);
+	void onSelfClosing() {
+		receiver.onSelfClosing(souper.element_);
 		souper.onSelfClosing();
 	}
-	override void onDocumentEnd() {
+	void onDocumentEnd() {
 		souper.onDocumentEnd();
-		receiver.onDocumentEnd(document_);
+		receiver.onDocumentEnd(souper.document_);
 	}
+	mixin(toIgnore());
 }
 
 unittest {
@@ -52,7 +87,7 @@ unittest {
 	import html.parser: parseHTML;
 	import std.array: Appender;
 
-	class ImageCollector(Document): NodeReceiver {
+	class ImageCollector(Document): NodeReceiver!Document {
 		Node*[] images;
 		Appender!(Node*[]) a;
 		this(Builder b) {
@@ -71,8 +106,8 @@ unittest {
 	enum parserOptions = ((DOMCreateOptions.Default & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
 
 	auto document = createDocument();
-	auto b = new Builder!Document(document);
-	ImageCollector c = new ImageCollector(b);
+	auto b = Builder!Document(document);
+	ImageCollector!Document c = new ImageCollector!Document(b);
 	b.receiver = c;
 	HTMLString source = `
 	<html>

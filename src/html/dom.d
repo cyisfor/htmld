@@ -826,7 +826,7 @@ auto createDocument(size_t options = DOMCreateOptions.Default)(HTMLString source
 	enum parserOptions = ((options & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
 
 	auto document = createDocument();
-	auto builder = new DOMBuilder!(Document)(document);
+	auto builder = DOMBuilder!(Document)(document);
 
 	parseHTML!(typeof(builder), parserOptions)(source, builder);
 	return document;
@@ -1337,7 +1337,7 @@ struct DOMBuilder(Document) {
 		}
 	}
 
-protected:
+
 	Document* document_;
 	Node* element_;
 	States state_;
