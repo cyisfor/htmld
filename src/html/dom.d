@@ -325,7 +325,9 @@ struct Node {
 			assert(!lastChild_);
 			firstChild_ = node;
 			lastChild_ = node;
+			lastChild_.next_ = null;
 		}
+		firstChild_.prev_ = null;
 	}
 
 	void appendChild(Node* node) {
@@ -343,8 +345,10 @@ struct Node {
 		} else {
 			assert(!firstChild_);
 			firstChild_ = node;
+			firstChild_.prev_ = null;
 			lastChild_ = node;
 		}
+		lastChild_.next_ = null;
 	}
 
 	void removeChild(Node* node) {
@@ -391,19 +395,25 @@ struct Node {
 			firstChild_ = node;
 			lastChild_ = node;
 		}
+		lastChild_.next_ = null;
 		node.parent_ = &this;
 	}
 
 	void insertBefore(Node* node) {
 		assert(document_ == node.document_);
-
+		assert(node);
+		
 		parent_ = node.parent_;
 		prev_ = node.prev_;
 		next_ = node;
 		node.prev_ = &this;
 
-		if (parent_ && (parent_.firstChild_ == node))
-			parent_.firstChild_ = &this;
+		if (parent_ && (parent_.firstChild_ == node)) {
+		  assert(!prev_);
+		  parent_.firstChild_ = &this;
+		} else if(prev_) {
+		  prev_.next_ = &this;
+		}
 	}
 
 	void insertAfter(Node* node) {
@@ -413,6 +423,12 @@ struct Node {
 		prev_ = node;
 		next_ = node.next_;
 		node.next_ = &this;
+		if(parent_ && (parent_.lastChild_ == node)) {
+		  assert(!next_);
+		  parent_.lastChild_ = &this;
+		} else if(next_) {
+		  next_.prev_ = &this;
+		}
 	}
 
 	void detach() {
@@ -444,7 +460,16 @@ struct Node {
 				prev_ = null;
 			}
 			parent_ = null;
+		} else {
+		  if(prev_) {
+			prev_.next_ = next_;
+		  }
+		  if(next_) {
+			next_.prev_ = prev_;
+		  }
 		}
+		prev_ = null;
+		next_ = null;
 	}
 
 	package void detachFast() {
@@ -471,7 +496,16 @@ struct Node {
 					next_.prev_ = prev_;
 				}
 			}
+		} else {
+		  if(prev_) {
+			prev_.next_ = next_;
+		  }
+		  if(next_) {
+			next_.prev_ = prev_;
+		  }
 		}
+		prev_ = null;
+		next_ = null;
 	}
 
 	void destroy() {
