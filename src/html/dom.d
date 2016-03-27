@@ -100,6 +100,8 @@ private struct AncestorsForward(NodeType, alias Condition = null) {
 private struct DescendantsDFForward(NodeType, alias Condition = null) {
 	this(NodeType* first) {
 		curr_ = first;
+			import std.stdio : writeln;
+			writeln("mocukent ",curr_.document_);
 		top_ = (first && first.parent_) ? first.parent_ : null;
 		static if (!is(typeof(Condition) == typeof(null))) {
 			if (!Condition(first))
@@ -331,6 +333,10 @@ struct Node {
 	}
 
 	void appendChild(Node* node) {
+		if(document_ != node.document_) {
+			import std.stdio;
+			writeln("oyyy ",document_," ",node.document_);
+		}	
 		assert(document_ == node.document_);
 		assert(isElementNode, "cannot append to non-element nodes");
 
@@ -402,7 +408,7 @@ struct Node {
 	void insertBefore(Node* node) {
 		assert(document_ == node.document_);
 		assert(node);
-		
+
 		parent_ = node.parent_;
 		prev_ = node.prev_;
 		next_ = node;
@@ -830,7 +836,7 @@ struct Node {
 		return document_.clone(&this);
 	}
 
-package:
+public:/*package:*/
 	enum TypeMask	= 0x7;
 	enum TypeShift	= 0;
 	enum FlagsBit	= TypeMask + 1;
@@ -853,7 +859,7 @@ package:
 	Document* document_;
 }
 
-auto createDocument(size_t options = DOMCreateOptions.Default)(HTMLString source) {
+auto ref createDocument(size_t options = DOMCreateOptions.Default)(HTMLString source) {
 	enum parserOptions = ((options & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
 
 	auto document = createDocument();
@@ -913,15 +919,16 @@ unittest {
 
 
 
-static auto createDocument() {
-	auto document = Document();
-	document.init();
+static auto ref createDocument() {
+	auto document = new Document;
+	document.initialize();
 	document.root(document.createElement("root"));
 	return document;
 }
 
 
 struct Document {
+	@disable this(this);
 	auto createElement(HTMLString tagName, Node* parent = null) {
 		auto node = alloc_.alloc();
 		*node = Node(&this, tagName);
@@ -984,9 +991,9 @@ struct Document {
 		return source.clone(&this);
 	}
 
-	Document clone() const {
-		Document other = Document();
-		other.init();
+	Document* clone() const {
+		Document* other = new Document;
+		other.initialize();
 		other.root(other.clone(this.root_));
 		return other;
 	}
@@ -1039,8 +1046,9 @@ struct Document {
 
 	NodeWrapper!(const(Node)) querySelector(Selector selector, const(Node)* context = null) const {
 		auto top = context ? context : root_;
-
 		foreach(node; DescendantsDFForward!(const(Node), mixin(OnlyElements))(top)) {
+			assert(node.document_ == top.document_);
+			assert(&this == node.document_);
 			if (selector.matches(node))
 				return node;
 		}
@@ -1051,6 +1059,8 @@ struct Document {
 		auto top = context ? context : root_;
 
 		foreach(node; DescendantsDFForward!(Node, mixin(OnlyElements))(top)) {
+			assert(node.document_ == top.document_);
+			assert(&this == node.document_);
 			if (selector.matches(node))
 				return node;
 		}
@@ -1077,6 +1087,8 @@ struct Document {
 
 	QuerySelectorAllResult querySelectorAll(Selector selector, Node* context = null) {
 		auto top = context ? context : root_;
+			import std.stdio : writeln;
+			writeln("dockent ",top.document_,context);
 		return QuerySelectorMatcher!(Node, DescendantsDFForward!Node)(selector, DescendantsDFForward!Node(top));
 	}
 
@@ -1094,8 +1106,8 @@ struct Document {
 		return alloc_;
 	}
 
-private:
-	void init() {
+public:/*private:*/
+	void initialize() {
 		alloc_.init;
 	}
 
@@ -1135,10 +1147,19 @@ unittest {
 	assert(docc.root.html == doc.root.html, docc.root.html);
 }
 
+unittest {
+  auto foo() {
+	return createDocument();
+  }
+
+  auto bar = foo();
+  bar.root.appendChild(bar.createElement("yay"));
+}
+
 
 struct DOMBuilder(Document) {
-	this(ref Document document, Node* parent = null) {
-		document_ = &document;
+	this(Document* document, Node* parent = null) {
+		document_ = document;
 		element_ = parent ? parent : document.root;
 	}
 
@@ -1260,7 +1281,7 @@ struct DOMBuilder(Document) {
 		}
 	}
 
-private:
+public:/*private:*/
 	Document* document_;
 	Node* element_;
 	States state_;
@@ -1543,7 +1564,7 @@ private struct Rule {
 		return relation_;
 	}
 
-package:
+public:/*package:*/
 	ushort flags_;
 	MatchType match_;
 	Relation relation_;
@@ -1922,7 +1943,7 @@ struct Selector {
 		return true;
 	}
 
-private:
+public:/*private:*/
 	HTMLString source_;
 	Rule[] rules_;
 }
