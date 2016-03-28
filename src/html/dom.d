@@ -19,7 +19,7 @@ enum DOMCreateOptions {
 	None = 0,
 	DecodeEntities  = 1 << 0,
 
-	Default = DecodeEntities,
+	Default = None,
 }
 
 
@@ -862,18 +862,13 @@ auto ref createDocument(size_t options = DOMCreateOptions.Default)(HTMLString so
 
 	auto document = createDocument();
 	auto builder = DOMBuilder!(Document)(document);
-	import std.stdio;
 	parseHTML!(typeof(builder), parserOptions | ParserOptions.ParseEntities)(source, builder);
 	return document;
 }
 
 unittest {
-  import std.stdio;
-  auto doc = createDocument!(DOMCreateOptions.None)("");
-  doc.root.html("It's");
-  writeln(doc.root.html);
-	doc = createDocument(`<html><body>&nbsp;</body></html>`);
-	assert(doc.root.outerHTML == `<root><html><body>&#160;</body></html></root>`,doc.root.outerHTML);
+  auto doc = createDocument(`<html><body>&nbsp;</body></html>`);
+	assert(doc.root.outerHTML == `<root><html><body>&nbsp;</body></html></root>`,doc.root.outerHTML);
 	doc = createDocument!(DOMCreateOptions.None)(`<html><body>&nbsp;</body></html>`);
 	assert(doc.root.outerHTML == `<root><html><body>&amp;nbsp;</body></html></root>`);
 	doc = createDocument(`<script>&nbsp;</script>`);
@@ -1275,20 +1270,6 @@ struct DOMBuilder(Document) {
 	}
 
 	void onHexEntity(HTMLString data) {
-	}
-
-	void onEntity(HTMLString data, HTMLString decoded) {
-	  
-	  import std.stdio; writeln("derp",data,decoded);
-	  auto app = appender!string ;
-	  writeHTMLEscaped(app,decoded);
-	  writeln(app.data);
-
-		if (state_ == States.Global) {
-			text_ ~= decoded;
-		} else {
-			value_ ~= decoded;
-		}
 	}
 
 public:/*private:*/

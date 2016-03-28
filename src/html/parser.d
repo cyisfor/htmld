@@ -7,8 +7,6 @@ import std.ascii;
 import std.conv;
 import std.traits;
 
-import html.entities : bytes_;
-import html.entities;
 import html.utils;
 
 
@@ -40,13 +38,6 @@ private enum ParserStates {
 	Comment,
 	PostComment1,
 	PostComment2,
-
-	// entities
-	PreEntity,
-	PreNumericEntity,
-	NamedEntity,
-	NumericEntity,
-	HexEntity,
 
 	// cdata
 	PreCDATA,
@@ -91,88 +82,10 @@ private enum ParserTextStates {
 
 
 enum ParserOptions {
-	ParseEntities   = 1 << 0,
-	DecodeEntities  = 1 << 1,
-
 	None = 0,
-	Default = ParseEntities | DecodeEntities,
+	Default = None
 }
 
-
-private auto parseNamedEntity(Handler, size_t options)(ref const(char)* start, ref const(char)* ptr, ref Handler handler) {
-	auto length = ptr - start - 1;
-	if (start[1+length-1] == ';')
-		--length;
-
-	if (!length)
-		return false;
-
-	auto limit = min(1+MaxLegacyEntityNameLength, length);
-	auto name = start[1..1+length];
-
-	while (true) {
-		if (auto pindex = name in index_) {
-			handler.onNamedEntity(name);
-			static if ((options & ParserOptions.DecodeEntities) != 0) {
-				auto offset = codeOffset(*pindex);
-				auto decoded = appender!string;
-				writeHTMLEscaped(decoded,
-								 cast(const(char)[])bytes_[offset..offset + codeLength(*pindex)]);
-				handler.onEntity(name, decoded.data);
-			}
-
-			start += 1 + name.length;
-			return true;
-		} else {
-			if (limit <= MinEntityNameLength)
-				return false;
-			--limit;
-			name = start[1..1+limit];
-			continue;
-		}
-	}
-}
-
-private auto parseNumericEntity(Handler, size_t options)(ref const(char)* start, ref const(char)* ptr, ref Handler handler) {
-	auto length = (ptr - start) - 2;
-	if (start[1+length-1] == ';')
-		--length;
-
-	if (!length)
-		return false;
-	auto name = start[2..2+length];
-	handler.onNumericEntity(name);
-
-	static if ((options & ParserOptions.DecodeEntities) != 0) {
-		auto cname = name[0..min(8, name.length)];
-		auto code = parse!uint(cname, 10);
-		handler.onEntity(start[2..2+length], decodeCodePoint(code));
-	}
-
-	start = ptr;
-	return true;
-}
-
-private auto parseHexEntity(Handler, size_t options)(ref const(char)* start, ref const(char)* ptr, ref Handler handler) {
-	auto length = (ptr - start) - 3;
-	if (start[1+length-1] == ';')
-		--length;
-
-	if (!length)
-		return false;
-
-	auto name = start[3..3+length];
-	handler.onHexEntity(name);
-
-	static if ((options & ParserOptions.DecodeEntities) != 0) {
-		auto cname = name[0..min(6, name.length)];
-		auto code = parse!uint(cname, 16);
-		handler.onEntity(name, decodeCodePoint(code));
-	}
-
-	start = ptr;
-	return true;
-}
 
 void parseHTML(Handler, size_t options = ParserOptions.Default)(const(char)[] source, ref Handler handler) {
 	auto ptr = source.ptr;
@@ -183,22 +96,14 @@ void parseHTML(Handler, size_t options = ParserOptions.Default)(const(char)[] so
 	ParserStates saved = ParserStates.Text;
 	ParserTextStates textState = ParserTextStates.Normal;
 
-	enum ParseEntities = (options & (ParserOptions.ParseEntities | ParserOptions.DecodeEntities)) != 0;
-	enum DecodeEntities = (options & ParserOptions.DecodeEntities) != 0;
-
 	while (ptr != end) {
 		final switch(state) with (ParserStates) {
 		case Text:
 			final switch (textState) with (ParserTextStates) {
 			case Normal:
-				static if (ParseEntities) {
-					while ((ptr != end) && (*ptr != '<') && (*ptr != '&'))
-						++ptr;
-				} else {
-					while ((ptr != end) && (*ptr != '<'))
-						++ptr;
-				}
-				break;
+			  while ((ptr != end) && (*ptr != '<'))
+				++ptr;
+			  break;
 			case Script:
 			case Style:
 				while ((ptr != end) && ((*ptr != '<') || (ptr + 1 == end) || (*(ptr + 1) != '/')))
@@ -207,26 +112,11 @@ void parseHTML(Handler, size_t options = ParserOptions.Default)(const(char)[] so
 			if (ptr == end)
 				continue;
 
-			static if (ParseEntities) {
-				auto noEntity = *ptr != '&';
-			} else {
-				enum noEntity = true;
-			}
 
-			if (noEntity) {
-				if (start != ptr)
-					handler.onText(start[0..ptr-start]);
-				state = PreTagName;
-				start = ptr;
-			} else {
-				static if (ParseEntities) {
-					if (start != ptr)
-						handler.onText(start[0..ptr-start]);
-					saved = state;
-					state = PreEntity;
-					start = ptr;
-				}
-			}
+			if (start != ptr)
+			  handler.onText(start[0..ptr-start]);
+			state = PreTagName;
+			start = ptr;
 			break;
 
 		case PreTagName:
@@ -424,100 +314,39 @@ void parseHTML(Handler, size_t options = ParserOptions.Default)(const(char)[] so
 			break;
 
 		case AttrValueDQ:
-			static if (ParseEntities) {
-				while ((ptr != end) && (*ptr != '\"') && (*ptr != '&'))
-					++ptr;
-			} else {
-				while ((ptr != end) && (*ptr != '\"'))
-					++ptr;
-			}
+		  while ((ptr != end) && (*ptr != '\"'))
+			++ptr;
+		  
 			if (ptr == end)
 				continue;
 
-			static if (ParseEntities) {
-				auto noEntity = *ptr != '&';
-			} else {
-				enum noEntity = true;
-			}
-
-			if (noEntity) {
-				handler.onAttrValue(start[0..ptr-start]);
-				handler.onAttrEnd();
-				state = PreAttrName;
-			} else {
-				static if (ParseEntities) {
-					if (start != ptr)
-						handler.onAttrValue(start[0..ptr-start]);
-					saved = state;
-					state = PreEntity;
-					start = ptr;
-				}
-			}
+			handler.onAttrValue(start[0..ptr-start]);
+			handler.onAttrEnd();
+			state = PreAttrName;
 			break;
 
 		case AttrValueSQ:
-			static if (ParseEntities) {
-				while ((ptr != end) && (*ptr != '\'') && (*ptr != '&'))
-					++ptr;
-			} else {
-				while ((ptr != end) && (*ptr != '\''))
-					++ptr;
-			}
+		  while ((ptr != end) && (*ptr != '\''))
+			++ptr;
+
 			if (ptr == end)
 				continue;
 
-			static if (ParseEntities) {
-				auto noEntity = *ptr != '&';
-			} else {
-				enum noEntity = true;
-			}
-
-			if (noEntity) {
-				handler.onAttrValue(start[0..ptr-start]);
-				handler.onAttrEnd();
-				state = PreAttrName;
-			} else {
-				static if (ParseEntities) {
-					if (start != ptr)
-						handler.onAttrValue(start[0..ptr-start]);
-					saved = state;
-					state = PreEntity;
-					start = ptr;
-				}
-			}
+			handler.onAttrValue(start[0..ptr-start]);
+			handler.onAttrEnd();
+			state = PreAttrName;
 			break;
 
 		case AttrValueNQ:
-			static if (ParseEntities) {
-				while ((ptr != end) && (*ptr != '>') && (*ptr != '&') && !isSpace(*ptr))
-					++ptr;
-			} else {
-				while ((ptr != end) && (*ptr != '>') && !isSpace(*ptr))
-					++ptr;
-			}
+		  while ((ptr != end) && (*ptr != '>') && !isSpace(*ptr))
+			++ptr;
+
 			if (ptr == end)
 				continue;
 
-			static if (ParseEntities) {
-				auto noEntity = *ptr != '&';
-			} else {
-				enum noEntity = true;
-			}
-
-			if (noEntity) {
-				handler.onAttrValue(start[0..ptr-start]);
-				handler.onAttrEnd();
-				state = PreAttrName;
-			} else {
-				static if (ParseEntities) {
-					if (start != ptr)
-						handler.onAttrValue(start[0..ptr-start]);
-					saved = state;
-					state = PreEntity;
-					start = ptr;
-					break;
-				}
-			}
+			handler.onAttrValue(start[0..ptr-start]);
+			handler.onAttrEnd();
+			state = PreAttrName;
 			continue;
 
 		case PreComment:
@@ -665,91 +494,6 @@ void parseHTML(Handler, size_t options = ParserOptions.Default)(const(char)[] so
 			state = Text;
 			start = ptr + 1;
 			break;
-
-		case PreEntity:
-			static if (ParseEntities) {
-				if (*ptr == '#') {
-					state = PreNumericEntity;
-					break;
-				} else {
-					state = NamedEntity;
-					continue;
-				}
-			} else {
-				assert(0, "should never get here!");
-			}
-
-		case NamedEntity:
-			static if (ParseEntities) {
-				while ((ptr != end) && (*ptr != ';') && isAlphaNum(*ptr) && (ptr - start < MaxEntityNameLength))
-					++ptr;
-				if (ptr == end)
-					continue;
-
-				if ((saved == Text) || (*ptr != '=')) {
-					if (parseNamedEntity!(Handler, options)(start, ptr, handler)) {
-						if (*start == ';')
-							++start;
-					}
-				}
-				state = saved;
-
-				if (*ptr == ';') break;
-				else continue;
-			} else {
-				break;
-			}
-
-		case PreNumericEntity:
-			static if (ParseEntities) {
-				if ((*ptr == 'X') || (*ptr == 'x')) {
-					state = HexEntity;
-					break;
-				} else {
-					state = NumericEntity;
-					continue;
-				}
-			} else {
-				assert(0, "should never get here!");
-			}
-
-		case NumericEntity:
-			static if (ParseEntities) {
-				while ((ptr != end) && (*ptr != ';') && isDigit(*ptr))
-					++ptr;
-				if (ptr == end)
-					continue;
-
-				state = saved;
-				if (parseNumericEntity!(Handler, options)(start, ptr, handler)) {
-					if (*start == ';')
-						++start;
-				}
-
-				if (*ptr == ';') break;
-				else continue;
-			} else {
-				break;
-			}
-
-		case HexEntity:
-			static if (ParseEntities) {
-				while ((ptr != end) && (*ptr != ';') && isHexDigit(*ptr))
-					++ptr;
-				if (ptr == end)
-					continue;
-
-				state = saved;
-				if (parseHexEntity!(Handler, options)(start, ptr, handler)) {
-					if (*start == ';')
-						++start;
-				}
-
-				if (*ptr == ';') break;
-				else continue;
-			} else {
-				break;
-			}
 
 		case PreScript_SC:
 			if ((*ptr == 'r') || (*ptr == 'R')) {
@@ -928,36 +672,6 @@ void parseHTML(Handler, size_t options = ParserOptions.Default)(const(char)[] so
 			break;
 		case PostComment2:
 			handler.onComment(remaining[0..$-2]);
-			break;
-		case NamedEntity:
-			static if (ParseEntities) {
-				if (saved == Text) {
-					if (ptr-start > 1)
-						parseNamedEntity!(Handler, options)(start, ptr, handler);
-					if (start < ptr)
-						handler.onText(start[0..ptr-start]);
-				}
-			}
-			break;
-		case NumericEntity:
-			static if (ParseEntities) {
-				if (saved == Text) {
-					if (ptr-start > 2)
-						parseNumericEntity!(Handler, options)(start, ptr, handler);
-					if (start < ptr)
-						handler.onText(start[0..ptr-start]);
-				}
-			}
-			break;
-		case HexEntity:
-			static if (ParseEntities) {
-				if (saved == Text) {
-					if (ptr-start > 3)
-						parseHexEntity!(Handler, options)(start, ptr, handler);
-					if (start < ptr)
-						handler.onText(start[0..ptr-start]);
-				}
-			}
 			break;
 		default:
 			if ((state != TagName) &&
