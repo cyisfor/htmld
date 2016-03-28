@@ -7,6 +7,7 @@ import std.ascii;
 import std.conv;
 import std.traits;
 
+import html.entities : bytes_;
 import html.entities;
 import html.utils;
 
@@ -114,7 +115,10 @@ private auto parseNamedEntity(Handler, size_t options)(ref const(char)* start, r
 			handler.onNamedEntity(name);
 			static if ((options & ParserOptions.DecodeEntities) != 0) {
 				auto offset = codeOffset(*pindex);
-				handler.onEntity(name, cast(const(char)[])bytes_[offset..offset + codeLength(*pindex)]);
+				auto decoded = appender!string;
+				writeHTMLEscaped(decoded,
+								 cast(const(char)[])bytes_[offset..offset + codeLength(*pindex)]);
+				handler.onEntity(name, decoded.data);
 			}
 
 			start += 1 + name.length;

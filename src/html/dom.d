@@ -100,8 +100,6 @@ private struct AncestorsForward(NodeType, alias Condition = null) {
 private struct DescendantsDFForward(NodeType, alias Condition = null) {
 	this(NodeType* first) {
 		curr_ = first;
-			import std.stdio : writeln;
-			writeln("mocukent ",curr_.document_);
 		top_ = (first && first.parent_) ? first.parent_ : null;
 		static if (!is(typeof(Condition) == typeof(null))) {
 			if (!Condition(first))
@@ -294,8 +292,7 @@ struct Node {
 		enum parserOptions = ((options & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
 
 		destroyChildren();
-
-		auto builder = DOMBuilder!(Document)(*document_, &this);
+		auto builder = DOMBuilder!(Document)(document_, &this);
 		parseHTML!(typeof(builder), parserOptions)(html, builder);
 	}
 
@@ -440,6 +437,7 @@ struct Node {
 	void detach() {
 		if (parent_) {
 			if (parent_.firstChild_ == &this) {
+			  assert(!prev_);
 				parent_.firstChild_ = next_;
 				if (next_) {
 					next_.prev_ = null;
@@ -564,7 +562,7 @@ struct Node {
 			}
 			break;
 		case Text:
-			writeHTMLEscaped(app, tag_);
+		  app.put(tag_);
 			break;
 		case Comment:
 			app.put("<!--");
@@ -601,7 +599,7 @@ struct Node {
 
 				if (value.length) {
 					app.put("=\"");
-					writeHTMLEscaped(app, value);
+					app.put(value);
 					app.put("\"");
 				}
 			}
@@ -864,14 +862,18 @@ auto ref createDocument(size_t options = DOMCreateOptions.Default)(HTMLString so
 
 	auto document = createDocument();
 	auto builder = DOMBuilder!(Document)(document);
-
-	parseHTML!(typeof(builder), parserOptions)(source, builder);
+	import std.stdio;
+	parseHTML!(typeof(builder), parserOptions | ParserOptions.ParseEntities)(source, builder);
 	return document;
 }
 
 unittest {
-	auto doc = createDocument(`<html><body>&nbsp;</body></html>`);
-	assert(doc.root.outerHTML == `<root><html><body>&#160;</body></html></root>`);
+  import std.stdio;
+  auto doc = createDocument!(DOMCreateOptions.None)("");
+  doc.root.html("It's");
+  writeln(doc.root.html);
+	doc = createDocument(`<html><body>&nbsp;</body></html>`);
+	assert(doc.root.outerHTML == `<root><html><body>&#160;</body></html></root>`,doc.root.outerHTML);
 	doc = createDocument!(DOMCreateOptions.None)(`<html><body>&nbsp;</body></html>`);
 	assert(doc.root.outerHTML == `<root><html><body>&amp;nbsp;</body></html></root>`);
 	doc = createDocument(`<script>&nbsp;</script>`);
@@ -1087,8 +1089,6 @@ struct Document {
 
 	QuerySelectorAllResult querySelectorAll(Selector selector, Node* context = null) {
 		auto top = context ? context : root_;
-			import std.stdio : writeln;
-			writeln("dockent ",top.document_,context);
 		return QuerySelectorMatcher!(Node, DescendantsDFForward!Node)(selector, DescendantsDFForward!Node(top));
 	}
 
@@ -1156,8 +1156,12 @@ unittest {
   bar.root.appendChild(bar.createElement("yay"));
 }
 
-
 struct DOMBuilder(Document) {
+  invariant {
+	assert(document_ !is null);
+	assert(element_ !is null);
+	assert(element_.document_ !is null);
+  }
 	this(Document* document, Node* parent = null) {
 		document_ = document;
 		element_ = parent ? parent : document.root;
@@ -1181,7 +1185,6 @@ struct DOMBuilder(Document) {
 			element_.appendText(text_);
 			text_.length = 0;
 		}
-
 		auto element = document_.createElement(data, element_);
 		element_ = element;
 	}
@@ -1238,7 +1241,7 @@ struct DOMBuilder(Document) {
 	}
 
 	void onComment(HTMLString data) {
-		document_.createCommentNode(data, element_);
+	  document_.createCommentNode(data, element_);
 	}
 
 	void onDeclaration(HTMLString data) {
@@ -1259,7 +1262,8 @@ struct DOMBuilder(Document) {
 				element_.appendText(text_);
 				text_.length = 0;
 			} else {
-				document_.root.appendText(text_);
+
+			  document_.root.appendText(text_);
 			}
 		}
 	}
@@ -1274,6 +1278,12 @@ struct DOMBuilder(Document) {
 	}
 
 	void onEntity(HTMLString data, HTMLString decoded) {
+	  
+	  import std.stdio; writeln("derp",data,decoded);
+	  auto app = appender!string ;
+	  writeHTMLEscaped(app,decoded);
+	  writeln(app.data);
+
 		if (state_ == States.Global) {
 			text_ ~= decoded;
 		} else {
