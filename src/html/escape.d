@@ -20,6 +20,7 @@ enum AttributeEscapes {
   apos = '\'',
 }
 
+/* miscellanelambdaous names for different unicode code points */
 enum NamedEscapes {
   nbsp = ' ',
 }
@@ -171,14 +172,22 @@ auto escape(bool unicode = true,
 		if(s[i] < 0x7f) {
 		  // if <0x7F, it cannot be the start of a utf-8 code sequence
 		  // it could be a control character though. So escape those too.
+		  
+		  // this makes it display as a number, not a char
+		  ubyte b = to!ubyte(s[i]);
+		  // to!string(n,radix)
+		  string sb = to!string(to!ubyte(s[i]),0x10);
+		  // prepend a 0, if it's 1 digit.
+		  if(b < 0x10) sb = "0" ~ sb;
 		  derp = "&x"
-			~ to!string(to!ubyte(s[i]),0x10)
+			~ sb
 			~ ";";
 		  return true;
 		}
 		import std.utf: decode;
 		import std.algorithm.comparison: min;
 		try {
+		  // decode stores the sequence length in its ref parameter
 		  auto point = decode(s[i..min($,i+4)],sequence_length);
 		  derp = "&x"
 			~ to!string(to!uint(point),0x10)
@@ -190,6 +199,7 @@ auto escape(bool unicode = true,
 		}
 		return true;
 	  } else {
+		// not escaping unicode, just keep going past it.
 		return false;
 	  }
 	}
@@ -220,10 +230,10 @@ void assert_equal(T)(T a, T b) {
 
 unittest {
   assert_equal(escape!(true,true,true)
-			   (`<hi>
+			   (`<hi>`~"\a"~`
 
 --—--<>`),
-			   `&lt;hi&gt;
+			   `&lt;hi&gt;&x07;
 
 --&x2014;--&lt;&gt;`);
 
@@ -237,4 +247,7 @@ alias escapeEverything = escape!(true,true,true);
 unittest {
   assert_equal(escapeHTML(`<test>—--</te&lt;`),
 						  `&lt;test&gt;—--&lt;/te&amp;lt;`);
+
+  assert_equal(escapeEntities(`<test>—--</te&lt;`),
+							  `<test>&x2014;--</te&amp;lt;`);
   }
