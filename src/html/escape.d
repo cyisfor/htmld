@@ -1,4 +1,5 @@
 module html.escape;
+  import std.stdio;
 
 import html: HTMLString;
 
@@ -13,17 +14,22 @@ enum AttributeEscapes {
 }
 
 enum NamedEscapes {
-  nbsp = ' '
+  nbsp = ' ',
+  amp = '&'
 }
 
+import std.array: Appender;
+
 bool checkEnum(alias Escapes, bool escape = true)
-  (string ref chunk,
-   Appender!string ref app) {
+  (ref HTMLString chunk,
+   Appender!HTMLString app) {
   import std.traits: EnumMembers;
   import std.conv: to;
+  import std.string: startsWith;
   foreach(e;EnumMembers!Escapes) {
 	auto repr = e.to!dchar.to!string;
 	auto name = e.to!string;
+	writeln("okay... ",chunk," ",repr," ",name);
 	if(repr == "\"")
 	  repr = "\\\"";
 	static if(escape == true) {
@@ -57,56 +63,46 @@ auto unescape(bool unicode = true,
   if(chunks.empty) return s;
   chunks.popFront();
   if(chunks.empty) return s;
-  import std.stdio;
   writeln(checkEnum!(HTMLEscapes,false)(s,app));
 
   foreach(chunk; chunks) {
 	writeln(chunk);
-	if(chunk.length == 0) {
-	  app.put("&");
-	  continue;
-	}
-	static if(html) {
-	  if(checkEnum!(HTMLEscapes,false)(s,app)) continue;
-	}
-	static if(attribute) {
-	  if(checkEnum!(AttributeEscapes,false)(s,app)) continue;
-	}
-	static if(unicode) {
-	  if(checkEnum!(NamedEscapes, false)(s,app)) continue;
-	  switch(chunk[0]) {
-	  case '#':
-		auto pos = chunk.countUntil(';');
-		if(pos < 0) {
-		  app.put("&" ~ chunk);
-		  continue;
+	bool handle() {
+	  if(chunk.length == 0) return false;
+	  static if(unicode) {
+		switch(chunk[1]) {
+		case '#':
+		  auto pos = chunk[2..$-1].countUntil(';');
+		  if(pos < 0) return false;
+		  auto num = chunk[2..pos];
+		  if(!isNumeric(num)) return false;
+		  
+		  app.put(num.to!int.to!dchar.to!string);
+		  app.put(chunk[pos..$-1]);
+		  return true;
+		case 'x':
+		  auto pos = chunk[2..$-1].countUntil(';');
+		  if(pos < 0) return false;
+		  auto num = chunk[2..pos];
+		  if(num.count!((c) => 0 == "abcdefABCDEF0123456789".count(c)) > 0)
+			return false;
+		
+		  app.put(to!int(num,0x10).to!dchar.to!string);
+		  return true;
+		default:
+		  if(checkEnum!(NamedEscapes, false)(chunk,app)) return true;
 		}
-		auto num = chunk[1..pos];
-		if(!isNumeric(num)) {
-		  app.put("&" ~ chunk);
-		  continue;
-		}
-		app.put(num.to!int.to!dchar.to!string);
-		app.put(chunk[pos..$]);
-		continue;
-
-	  case 'x':
-		auto pos = chunk.countUntil(';');
-		if(pos < 0) {
-		  app.put("&" ~ chunk);
-		  continue;
-		}
-		auto num = chunk[1..pos];
-		if(num.count("abcdefABCDEF0123456789") < num.length) {
-		  app.put("&" ~ chunk);
-		  continue;
-		}
-		app.put(to!int(num,0x10).to!dchar.to!string);
-		continue;
-	  default:
-		app.put("&" ~ chunk);
-		continue;
 	  }
+	  static if(html) {
+		if(checkEnum!(HTMLEscapes,false)(chunk,app)) return true;
+	  }
+	  static if(attribute) {
+		if(checkEnum!(AttributeEscapes,false)(chunk,app)) return true;
+	  }
+	  return false;
+	}
+	if(!handle()) {
+	  app.put(chunk);
 	}
   }
   return app.data;
@@ -116,3 +112,57 @@ unittest {
   import std.stdio;
   writeln("hmmm ",unescape!(true,true,true)("&lt;html&gt;&amp;amp; &#160; &x37;"));
 }
+
+auto escape(bool unicode = true,
+			  bool html = false,
+			  bool attribute = false)
+  (HTMLString s) {
+  import std.array: appender;
+  import std.algorithm.iteration: splitter;
+  auto app = appender!HTMLString;
+  bool criteria(char c) {
+	static if(unicode) {
+	  // no utf-8 multibyte characters, or control characters.
+	  if(c < ' ' || c > '~') return true;
+	  foreach(e;EnumMembers!NamedEscapes) {
+		if(e.to!char == c) return true;
+	  }
+	}
+	static if(html) {
+	  foreach(e;EnumMembers!HTMLEscapes) {
+		if(e.to!char == c) return true;
+	  }
+	}
+	static if(attribute) {
+	  foreach(e;EnumMembers!AttributeEscapes) {
+		if(e.to!char == c) return true;
+	  }
+	}
+  }
+	
+  auto chunks = s.splitter(criteria);
+  if(chunks.empty) return s;
+  chunks.popFront();
+  if(chunks.empty) return s;
+  for(chunk; chunks) {
+	static if(unicode) {
+	  import std.utf: decode;
+	  if(checkEnum!(NamedEscapes, true)(chunk,app)) continue;
+	  if(chunk[0] > 0x7f) {
+		auto num = 0
+		auto point = decode(chunk,num);
+		app.put("&x");
+		app.put(to!int(point,0x10));
+		app.put(";");
+		app.put(chunk[num..$]);
+		continue;
+	  }
+	}
+	static if(html) {
+	  if(checkEnum!(HTMLEscapes, true)(chunk,app)) continue;
+	}
+	static if(attribute) {
+	  if(checkEnum!(AttributeEscapes, true)(chunk,app)) continue;
+	}
+  }
+	
