@@ -17,8 +17,6 @@ alias HTMLString = const(char)[];
 
 enum DOMCreateOptions {
 	None = 0,
-	DecodeEntities  = 1 << 0,
-
 	Default = None,
 }
 
@@ -288,8 +286,6 @@ struct Node {
 
 	@property void html(size_t options = DOMCreateOptions.Default)(HTMLString html) {
 		assert(isElementNode, "cannot add html to non-element nodes");
-
-		enum parserOptions = ((options & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
 
 		destroyChildren();
 		auto builder = DOMBuilder!(Document)(document_, &this);
@@ -858,19 +854,15 @@ public:/*package:*/
 }
 
 auto ref createDocument(size_t options = DOMCreateOptions.Default)(HTMLString source) {
-	enum parserOptions = ((options & DOMCreateOptions.DecodeEntities) ? ParserOptions.DecodeEntities : 0);
-
 	auto document = createDocument();
 	auto builder = DOMBuilder!(Document)(document);
-	parseHTML!(typeof(builder), parserOptions | ParserOptions.ParseEntities)(source, builder);
+	parseHTML!(typeof(builder))(source, builder);
 	return document;
 }
 
 unittest {
   auto doc = createDocument(`<html><body>&nbsp;</body></html>`);
 	assert(doc.root.outerHTML == `<root><html><body>&nbsp;</body></html></root>`,doc.root.outerHTML);
-	doc = createDocument!(DOMCreateOptions.None)(`<html><body>&nbsp;</body></html>`);
-	assert(doc.root.outerHTML == `<root><html><body>&amp;nbsp;</body></html></root>`);
 	doc = createDocument(`<script>&nbsp;</script>`);
 	assert(doc.root.outerHTML == `<root><script>&nbsp;</script></root>`, doc.root.outerHTML);
 	doc = createDocument(`<style>&nbsp;</style>`);
@@ -907,11 +899,11 @@ unittest {
 
 unittest {
 	const doc = createDocument(`<html><body><div>&nbsp;</div></body></html>`);
-	assert(doc.root.find("html").front.outerHTML == `<html><body><div>&#160;</div></body></html>`);
-	assert(doc.root.find("html").front.find("div").front.outerHTML == `<div>&#160;</div>`);
-	assert(doc.root.find("body").front.outerHTML == `<body><div>&#160;</div></body>`);
-	assert(doc.root.find("body").front.closest("body").outerHTML == `<body><div>&#160;</div></body>`); // closest() tests self
-	assert(doc.root.find("body").front.closest("html").outerHTML == `<html><body><div>&#160;</div></body></html>`);
+	assert(doc.root.find("html").front.outerHTML == `<html><body><div>&nbsp;</div></body></html>`);
+	assert(doc.root.find("html").front.find("div").front.outerHTML == `<div>&nbsp;</div>`);
+	assert(doc.root.find("body").front.outerHTML == `<body><div>&nbsp;</div></body>`);
+	assert(doc.root.find("body").front.closest("body").outerHTML == `<body><div>&nbsp;</div></body>`); // closest() tests self
+	assert(doc.root.find("body").front.closest("html").outerHTML == `<html><body><div>&nbsp;</div></body></html>`);
 }
 
 
@@ -1261,15 +1253,6 @@ struct DOMBuilder(Document) {
 			  document_.root.appendText(text_);
 			}
 		}
-	}
-
-	void onNamedEntity(HTMLString data) {
-	}
-
-	void onNumericEntity(HTMLString data) {
-	}
-
-	void onHexEntity(HTMLString data) {
 	}
 
 public:/*private:*/
