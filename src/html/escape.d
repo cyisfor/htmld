@@ -42,13 +42,12 @@ bool unescapeEnum(alias Escapes)
 
 bool escapeEnum(alias Escapes)
   (const(char) c,
-   ref Appender!HTMLString app) {
+   ref HTMLString dest) {
   foreach(e;EnumMembers!Escapes) {
 	if(c == e) {
 	  auto name = e.to!string;
-	  app.put('&');
-	  app.put(name);
-	  app.put(';');
+	  // mehh
+	  dest = "&" ~ name ~ ";";
 	  return true;
 	}
   }
@@ -74,10 +73,10 @@ auto unescape(bool unicode = true,
 	bool handle() {
 	  if(chunk.length == 0) return false;
 	  static if(html) {
-		if(unescapeEnum!(HTMLEscapes,false)(chunk,app)) return true;
+		if(unescapeEnum!HTMLEscapes(chunk,app)) return true;
 	  }
 	  static if(attribute) {
-		if(unescapeEnum!(AttributeEscapes,false)(chunk,app)) return true;
+		if(unescapeEnum!AttributeEscapes(chunk,app)) return true;
 	  }
 	  static if(unicode) {
 		switch(chunk[0]) {
@@ -100,7 +99,7 @@ auto unescape(bool unicode = true,
 		  app.put(chunk[pos+2..$]);
 		  return true;
 		default:
-		  if(unescapeEnum!(NamedEscapes, false)(chunk,app)) return true;
+		  if(unescapeEnum!NamedEscapes(chunk,app)) return true;
 		}
 	  }
 	  return false;
@@ -137,7 +136,7 @@ auto escape(bool unicode = true,
 
   import std.array: appender;
   import std.algorithm.iteration: splitter;
-  import std.ascii: isPrintable;
+  import std.ascii: isPrintable, isWhite;
 
   bool criteria(const(dchar) c) {
 	static if(unicode) {
@@ -161,13 +160,12 @@ auto escape(bool unicode = true,
   }
 
   auto app = appender!HTMLString;
-
   /* it's fastest to just iterate over the bytes...
 	 because we can't memchr since we don't know what we're looking for.
   */
   int last = 0;
   for(int i=0;i<s.length;++i) {
-	HTMLString derp;
+	HTMLString derp = null;
 	bool handle() {
 	  static if(html) {
 		if(escapeEnum!HTMLEscapes(s[i], derp)) return true;
@@ -180,22 +178,35 @@ auto escape(bool unicode = true,
 	  }
 	  if(escapeEnum!NamedEscapes(s[i], derp)) return true;
 	  if(isPrintable(s[i])) return false;
-
+	  if(isWhite(s[i])) return false;
 	  if(s[i] < 0x7f) {
-		app.put("&x");
-		app.put(to!string(s[i],0x10));
-		app.put(';');
+		derp = "&x"
+		  ~ to!string(to!byte(s[i]),0x10)
+		  ~ ";";
 		return true;
 	  }
 	  size_t num = 0;
-	  auto point = decode(s[i..min($,i+4)],num);
-	  app.put("&x");
-	  app.put(to!string(to!uint(point),0x10));
-	  app.put(";");
+	  import std.utf: decode;
+	  import std.algorithm.comparison: min;
+	  try {
+		auto point = decode(s[i..min($,i+4)],num);
+		i += num; // auto-++
+		derp = "&x"
+		  ~ to!string(to!uint(point),0x10)
+		  ~ ";";
+		last = i + 1;
+	  } catch(Exception e) {
+		writeln(s[i-1..min($,i+4)]);
+		throw e;
+	  }
 	  return true;
 	}
 	if(handle()) {
+	  if(last < i) {
+		app.put(s[last..i]);
+	  }
 	  last = i + 1;
+	  app.put(derp);
 	}
   }
   if(last < s.length) {
@@ -204,8 +215,22 @@ auto escape(bool unicode = true,
   return app.data;
 }
 
-unittest {
-  writeln(escape!(true,true,true)(`<hi>
+void assert_equal(T)(T a, T b) {
+  if(a != b) {
+	import std.stdio;
+	writeln("ugggh ");
+	writeln(a);
+	assert(false);
+  }
+}
 
---—--`));
+unittest {
+  assert_equal(escape!(true,true,true)
+			   (`<hi>
+
+--—--`),
+			   `&lt;hi&gt;
+
+--&x2014;--`);
+
 }
