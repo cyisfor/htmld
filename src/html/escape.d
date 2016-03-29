@@ -1,14 +1,18 @@
 module html.escape;
-  import std.stdio;
-  import std.traits: EnumMembers;
-  import std.conv: to;
+import std.traits: EnumMembers;
+import std.conv: to;
 
 import html: HTMLString;
+
+enum MandatoryEscapes {
+  // justification: if we don't escape &, when we unescape, it could get
+  // considered an escape!
+  amp = '&'
+}
 
 enum HTMLEscapes {
   lt = '<',
   gt = '>',
-  amp = '&'
 };
 
 enum AttributeEscapes {
@@ -60,9 +64,8 @@ auto unescape(bool unicode = true,
   (HTMLString s) {
   import std.array: appender;
   import std.algorithm.iteration: splitter;
-  import std.conv: to;
   import std.string: isNumeric;
-  import std.algorithm.searching: countUntil, count,startsWith;
+  import std.algorithm.searching: countUntil, count;
   auto app = appender!HTMLString;
   auto chunks = s.splitter("&");
   if(chunks.empty) return s;
@@ -72,6 +75,7 @@ auto unescape(bool unicode = true,
   foreach(chunk; chunks) {
 	bool handle() {
 	  if(chunk.length == 0) return false;
+	  if(unescapeEnum!MandatoryEscapes(chunk,app)) return true;
 	  static if(html) {
 		if(unescapeEnum!HTMLEscapes(chunk,app)) return true;
 	  }
@@ -113,10 +117,11 @@ auto unescape(bool unicode = true,
 }
 
 unittest {
-  import std.stdio;
   import std.algorithm.comparison: equal;
   void assert_equal(HTMLString a, HTMLString b) {
-	if(a != b) {
+	if(!equal(a,b)) {
+	  import std.stdio;
+		
 	  writeln("fail");
 	  writeln(a);
 	  writeln(b);
@@ -135,39 +140,23 @@ auto escape(bool unicode = true,
   if(s.length == 0) return s;
 
   import std.array: appender;
-  import std.algorithm.iteration: splitter;
   import std.ascii: isPrintable, isWhite;
 
-  bool criteria(const(dchar) c) {
-	static if(unicode) {
-	  // break on utf-8 multibyte characters, or control characters.
-
-	  foreach(e;EnumMembers!NamedEscapes) {
-		if(e.to!dchar == c) return true;
-	  }
-	}
-	static if(html) {
-	  foreach(e;EnumMembers!HTMLEscapes) {
-		if(e.to!dchar == c) return true;
-	  }
-	}
-	static if(attribute) {
-	  foreach(e;EnumMembers!AttributeEscapes) {
-		if(e.to!dchar == c) return true;
-	  }
-	}
-	return false;
-  }
-
   auto app = appender!HTMLString;
+
   /* it's fastest to just iterate over the bytes...
-	 because we can't memchr since we don't know what we're looking for.
+	 because we can't memchr, since we don't know what we're looking for.
   */
   int last = 0;
   for(int i=0;i<s.length;++i) {
 	HTMLString derp = null;
-	size_t num = 0; // need last, before sequence, AND after sequence
+	/* We need to remember after the last sequence,
+	   before the current sequence, AND after the current sequence
+	   for multi-byte UTF-8, the latter two are not the same.
+	*/
+	size_t sequence_length = 0; 
 	bool handle() {
+	  if(escapeEnum!MandatoryEscapes(s[i],derp)) return true;
 	  static if(html) {
 		if(escapeEnum!HTMLEscapes(s[i], derp)) return true;
 	  }
@@ -177,35 +166,40 @@ auto escape(bool unicode = true,
 	  static if(unicode) {
 		if(escapeEnum!NamedEscapes(s[i], derp)) return true;
 		if(isPrintable(s[i])) return false;
+		// never escape carriage returns, tabs, etc.
 		if(isWhite(s[i])) return false;
 		if(s[i] < 0x7f) {
+		  // if <0x7F, it cannot be the start of a utf-8 code sequence
+		  // it could be a control character though. So escape those too.
 		  derp = "&x"
-			~ to!string(to!byte(s[i]),0x10)
+			~ to!string(to!ubyte(s[i]),0x10)
 			~ ";";
 		  return true;
 		}
 		import std.utf: decode;
 		import std.algorithm.comparison: min;
 		try {
-		  auto point = decode(s[i..min($,i+4)],num);
+		  auto point = decode(s[i..min($,i+4)],sequence_length);
 		  derp = "&x"
 			~ to!string(to!uint(point),0x10)
 			~ ";";
 		} catch(Exception e) {
+		  import std.stdio;
 		  writeln(s[i-1..min($,i+4)]);
 		  throw e;
 		}
 		return true;
+	  } else {
+		return false;
 	  }
-	  return false;
 	}
 	if(handle()) {
 	  if(last < i) {
 		app.put(s[last..i]);
 	  }
 	  app.put(derp);
-	  if(num > 0)
-		i += num - 1;
+	  if(sequence_length > 0)
+		i += sequence_length - 1;
 	  last = i + 1;
 	}
   }
@@ -241,6 +235,6 @@ alias escapeEntities = escape!(true,false,false);
 alias escapeEverything = escape!(true,true,true);
 
 unittest {
-  assert_equal(escapeHTML(`<test>—--</te`,
-						  `&lt;test&gt;—--&lt;/te`));
+  assert_equal(escapeHTML(`<test>—--</te&lt;`),
+						  `&lt;test&gt;—--&lt;/te&amp;lt;`);
   }
