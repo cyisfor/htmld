@@ -16,32 +16,31 @@ enum NamedEscapes {
   nbsp = ' '
 }
 
-string checkEnum(alias Escapes, bool escape = true)(string s) {
-  import std.array: appender;
+bool checkEnum(alias Escapes, bool escape = true)
+  (string ref chunk,
+   Appender!string ref app) {
   import std.traits: EnumMembers;
-  import std.format: format;
   import std.conv: to;
-  auto app = appender!string;
   foreach(e;EnumMembers!Escapes) {
-	static if(escape) {
-	  app.put(q{
-		  if(chunk.startsWith("%1$s")) {
-			app.put("&%2$s;");
-			app.put(chunk["%1$s".length:$]);
-			continue;
-		  }
-		}.format(to!wchar(e),to!string(e)));
+	auto repr = e.to!dchar.to!string;
+	auto name = e.to!string;
+	if(repr == "\"")
+	  repr = "\\\"";
+	static if(escape == true) {
+	  if(chunk.startsWith(repr)) {
+		app.put("&"~name~";");
+		app.put(chunk[repr.length..$]);
+		return true;
+	  }
 	} else {
-	  app.put(q{
-		  if(chunk.startsWith("%1$s;")) {
-			app.put("%2$s");
-			app.put(chunk["%1$s;".length:$]);
-			continue;
-		  }
-		}.format(to!string(e),to!wchar(e)));
+	  if(chunk.startsWith(name ~ ";")) {
+		app.put(repr);
+		app.put(chunk[name.length+1..$]);
+		return true;
+	  }
 	}
   }
-  return app.data;
+  return false;
 }
 
 auto unescape(bool unicode = true,
@@ -52,26 +51,29 @@ auto unescape(bool unicode = true,
   import std.algorithm.iteration: splitter;
   import std.conv: to;
   import std.string: isNumeric;
-  import std.algorithm.searching: countUntil, count;
+  import std.algorithm.searching: countUntil, count,startsWith;
   auto app = appender!HTMLString;
   auto chunks = s.splitter("&");
   if(chunks.empty) return s;
   chunks.popFront();
   if(chunks.empty) return s;
+  import std.stdio;
+  writeln(checkEnum!(HTMLEscapes,false)(s,app));
 
   foreach(chunk; chunks) {
+	writeln(chunk);
 	if(chunk.length == 0) {
 	  app.put("&");
 	  continue;
 	}
 	static if(html) {
-	  mixin checkEnum!(HTMLEscapes,false);
+	  if(checkEnum!(HTMLEscapes,false)(s,app)) continue;
 	}
 	static if(attribute) {
-	  mixin checkEnum!(AttributeEscapes,false);
+	  if(checkEnum!(AttributeEscapes,false)(s,app)) continue;
 	}
 	static if(unicode) {
-	  mixin checkEnum!(NamedEscapes, false);
+	  if(checkEnum!(NamedEscapes, false)(s,app)) continue;
 	  switch(chunk[0]) {
 	  case '#':
 		auto pos = chunk.countUntil(';');
@@ -112,5 +114,5 @@ auto unescape(bool unicode = true,
 
 unittest {
   import std.stdio;
-  writeln("hmmm ",unescape("&lt;html&gt;&amp;amp; &#160; &x37;"));
+  writeln("hmmm ",unescape!(true,true,true)("&lt;html&gt;&amp;amp; &#160; &x37;"));
 }
