@@ -1,5 +1,7 @@
 module html.escape;
   import std.stdio;
+  import std.traits: EnumMembers;
+  import std.conv: to;
 
 import html: HTMLString;
 
@@ -23,8 +25,6 @@ import std.array: Appender;
 bool checkEnum(alias Escapes, bool escape = true)
   (ref HTMLString chunk,
    Appender!HTMLString app) {
-  import std.traits: EnumMembers;
-  import std.conv: to;
   import std.string: startsWith;
   foreach(e;EnumMembers!Escapes) {
 	auto repr = e.to!dchar.to!string;
@@ -120,10 +120,10 @@ auto escape(bool unicode = true,
   import std.array: appender;
   import std.algorithm.iteration: splitter;
   auto app = appender!HTMLString;
-  bool criteria(char c) {
+  bool criteria(const(char) c) {
 	static if(unicode) {
-	  // no utf-8 multibyte characters, or control characters.
-	  if(c < ' ' || c > '~') return true;
+	  // break on utf-8 multibyte characters, or control characters.
+	  if(!isPrintable(c)) return true;
 	  foreach(e;EnumMembers!NamedEscapes) {
 		if(e.to!char == c) return true;
 	  }
@@ -138,31 +138,49 @@ auto escape(bool unicode = true,
 		if(e.to!char == c) return true;
 	  }
 	}
+	return false;
   }
-	
-  auto chunks = s.splitter(criteria);
+
+  import std.range: isForwardRange;
+  import std.functional: unaryFun;
+  static assert(isForwardRange!(typeof(s)));
+  pragma(msg,typeid(typeof(criteria)));
+  pragma(msg,is(typeof(unaryFun!criteria(s[0]))));
+  auto chunks = splitter!(a => a == ' ')(s);
   if(chunks.empty) return s;
   chunks.popFront();
   if(chunks.empty) return s;
-  for(chunk; chunks) {
-	static if(unicode) {
-	  import std.utf: decode;
-	  if(checkEnum!(NamedEscapes, true)(chunk,app)) continue;
-	  if(chunk[0] > 0x7f) {
-		auto num = 0
-		auto point = decode(chunk,num);
-		app.put("&x");
-		app.put(to!int(point,0x10));
-		app.put(";");
-		app.put(chunk[num..$]);
-		continue;
+  foreach(chunk; chunks) {
+	bool handle() {
+	  static if(unicode) {
+		import std.utf: decode;
+		if(checkEnum!(NamedEscapes, true)(chunk,app)) return true;
+		if(chunk[0] > 0x7f) {
+		  size_t num = 0;
+		  auto point = decode(chunk,num);
+		  app.put("&x");
+		  app.put(to!uint(point,0x10));
+		  app.put(";");
+		  app.put(chunk[num..$]);
+		  return true;
+		}
 	  }
+	  static if(html) {
+		if(checkEnum!(HTMLEscapes, true)(chunk,app)) return true;
+	  }
+	  static if(attribute) {
+		if(checkEnum!(AttributeEscapes, true)(chunk,app)) return true;		
+	  }
+	  return false;
 	}
-	static if(html) {
-	  if(checkEnum!(HTMLEscapes, true)(chunk,app)) continue;
-	}
-	static if(attribute) {
-	  if(checkEnum!(AttributeEscapes, true)(chunk,app)) continue;
+	if(!handle()) {
+	  app.put(chunk);
 	}
   }
+}
 	
+unittest {
+  writeln(escape!(true,true,true)(`<hi>
+
+--—--`));
+}
