@@ -29,7 +29,6 @@ bool checkEnum(alias Escapes, bool escape = true)
   foreach(e;EnumMembers!Escapes) {
 	auto repr = e.to!dchar.to!string;
 	auto name = e.to!string;
-	writeln("okay... ",chunk," ",repr," ",name);
 	if(repr == "\"")
 	  repr = "\\\"";
 	static if(escape == true) {
@@ -63,27 +62,32 @@ auto unescape(bool unicode = true,
   if(chunks.empty) return s;
   chunks.popFront();
   if(chunks.empty) return s;
-  writeln(checkEnum!(HTMLEscapes,false)(s,app));
 
   foreach(chunk; chunks) {
-	writeln(chunk);
+	import std.algorithm: min;
 	bool handle() {
 	  if(chunk.length == 0) return false;
+	  static if(html) {
+		if(checkEnum!(HTMLEscapes,false)(chunk,app)) return true;
+	  }
+	  static if(attribute) {
+		if(checkEnum!(AttributeEscapes,false)(chunk,app)) return true;
+	  }
 	  static if(unicode) {
-		switch(chunk[1]) {
+		switch(chunk[0]) {
 		case '#':
-		  auto pos = chunk[2..$-1].countUntil(';');
+		  auto pos = chunk[1..$].countUntil(';');
 		  if(pos < 0) return false;
-		  auto num = chunk[2..pos];
+		  auto num = chunk[1..pos];
 		  if(!isNumeric(num)) return false;
 		  
 		  app.put(num.to!int.to!dchar.to!string);
-		  app.put(chunk[pos..$-1]);
+		  app.put(chunk[pos..$]);
 		  return true;
 		case 'x':
-		  auto pos = chunk[2..$-1].countUntil(';');
+		  auto pos = chunk[1..$].countUntil(';');
 		  if(pos < 0) return false;
-		  auto num = chunk[2..pos];
+		  auto num = chunk[1..pos];
 		  if(num.count!((c) => 0 == "abcdefABCDEF0123456789".count(c)) > 0)
 			return false;
 		
@@ -93,15 +97,10 @@ auto unescape(bool unicode = true,
 		  if(checkEnum!(NamedEscapes, false)(chunk,app)) return true;
 		}
 	  }
-	  static if(html) {
-		if(checkEnum!(HTMLEscapes,false)(chunk,app)) return true;
-	  }
-	  static if(attribute) {
-		if(checkEnum!(AttributeEscapes,false)(chunk,app)) return true;
-	  }
 	  return false;
 	}
 	if(!handle()) {
+	  app.put('&');
 	  app.put(chunk);
 	}
   }
@@ -110,7 +109,10 @@ auto unescape(bool unicode = true,
 
 unittest {
   import std.stdio;
-  writeln("hmmm ",unescape!(true,true,true)("&lt;html&gt;&amp;amp; &#160; &x37;"));
+  import std.algorithm.comparison: equal;
+  assert
+	(equal(unescape!(true,true,true)("&lt;html&gt;&amp;amp; &#160; &x37;"),
+		   `<html>&amp; 0; `));
 }
 
 auto escape(bool unicode = true,
@@ -119,6 +121,7 @@ auto escape(bool unicode = true,
   (HTMLString s) {
   import std.array: appender;
   import std.algorithm.iteration: splitter;
+  import std.ascii: isPrintable;
   auto app = appender!HTMLString;
   bool criteria(const(char) c) {
 	static if(unicode) {
@@ -143,14 +146,15 @@ auto escape(bool unicode = true,
 
   import std.range: isForwardRange;
   import std.functional: unaryFun;
-  static assert(isForwardRange!(typeof(s)));
-  pragma(msg,typeid(typeof(criteria)));
-  pragma(msg,is(typeof(unaryFun!criteria(s[0]))));
-  auto chunks = splitter!(a => a == ' ')(s);
+  pragma(msg,typeid(typeof((cast(Range)s).front)))
+  static assert(isForwardRange!(typeof(s))
+				&& is(typeof(unaryFun!criteria((cast(Range)s).front))));
+  auto chunks = splitter!(criteria)(s);
   if(chunks.empty) return s;
   chunks.popFront();
   if(chunks.empty) return s;
   foreach(chunk; chunks) {
+	writeln("okay... ",chunk);
 	bool handle() {
 	  static if(unicode) {
 		import std.utf: decode;
@@ -159,7 +163,7 @@ auto escape(bool unicode = true,
 		  size_t num = 0;
 		  auto point = decode(chunk,num);
 		  app.put("&x");
-		  app.put(to!uint(point,0x10));
+		  app.put(to!string(to!uint(point),0x10));
 		  app.put(";");
 		  app.put(chunk[num..$]);
 		  return true;
@@ -174,9 +178,11 @@ auto escape(bool unicode = true,
 	  return false;
 	}
 	if(!handle()) {
+	  app.put('&');
 	  app.put(chunk);
 	}
   }
+  return app.data;
 }
 	
 unittest {
