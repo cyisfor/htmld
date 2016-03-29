@@ -22,7 +22,7 @@ enum NamedEscapes {
 
 import std.array: Appender;
 
-bool checkEnum(alias Escapes, bool escape = true)
+bool unescapeEnum(alias Escapes)
   (ref HTMLString chunk,
    ref Appender!HTMLString app) {
   import std.string: startsWith;
@@ -31,19 +31,25 @@ bool checkEnum(alias Escapes, bool escape = true)
 	auto name = e.to!string;
 	if(repr == "\"")
 	  repr = "\\\"";
-	static if(escape == true) {
-	  writeln("hmm",repr," ",chunk);
-	  if(chunk.startsWith(repr)) {
-		app.put("&"~name~";");
-		app.put(chunk[repr.length..$]);
-		return true;
-	  }
-	} else {
-	  if(chunk.startsWith(name ~ ";")) {
-		app.put(repr);
-		app.put(chunk[name.length+1..$]);
-		return true;
-	  }
+	if(chunk.startsWith(name ~ ";")) {
+	  app.put(repr);
+	  app.put(chunk[name.length+1..$]);
+	  return true;
+	}
+  }
+  return false;
+}
+
+bool escapeEnum(alias Escapes)
+  (const(char) c,
+   ref Appender!HTMLString app) {
+  foreach(e;EnumMembers!Escapes) {
+	if(c == e) {
+	  auto name = e.to!string;
+	  app.put('&');
+	  app.put(name);
+	  app.put(';');
+	  return true;
 	}
   }
   return false;
@@ -65,14 +71,13 @@ auto unescape(bool unicode = true,
   if(chunks.empty) return s;
 
   foreach(chunk; chunks) {
-	import std.algorithm: min;
 	bool handle() {
 	  if(chunk.length == 0) return false;
 	  static if(html) {
-		if(checkEnum!(HTMLEscapes,false)(chunk,app)) return true;
+		if(unescapeEnum!(HTMLEscapes,false)(chunk,app)) return true;
 	  }
 	  static if(attribute) {
-		if(checkEnum!(AttributeEscapes,false)(chunk,app)) return true;
+		if(unescapeEnum!(AttributeEscapes,false)(chunk,app)) return true;
 	  }
 	  static if(unicode) {
 		switch(chunk[0]) {
@@ -90,12 +95,12 @@ auto unescape(bool unicode = true,
 		  auto num = chunk[1..pos+1];
 		  if(num.count!((c) => 0 == "abcdefABCDEF0123456789".count(c)) > 0)
 			return false;
-		
+
 		  app.put(to!int(num,0x10).to!dchar.to!string);
 		  app.put(chunk[pos+2..$]);
 		  return true;
 		default:
-		  if(checkEnum!(NamedEscapes, false)(chunk,app)) return true;
+		  if(unescapeEnum!(NamedEscapes, false)(chunk,app)) return true;
 		}
 	  }
 	  return false;
@@ -129,7 +134,7 @@ auto escape(bool unicode = true,
 			  bool attribute = false)
   (HTMLString s) {
   if(s.length == 0) return s;
-  
+
   import std.array: appender;
   import std.algorithm.iteration: splitter;
   import std.ascii: isPrintable;
@@ -137,7 +142,7 @@ auto escape(bool unicode = true,
   bool criteria(const(dchar) c) {
 	static if(unicode) {
 	  // break on utf-8 multibyte characters, or control characters.
-	  if(!isPrintable(c)) return true;
+
 	  foreach(e;EnumMembers!NamedEscapes) {
 		if(e.to!dchar == c) return true;
 	  }
@@ -162,39 +167,43 @@ auto escape(bool unicode = true,
   */
   int last = 0;
   for(int i=0;i<s.length;++i) {
-	if(!criteria(s[i])) continue;
-	if(i > last) {
-	  app.put(s[last..i-1]);
-	}
-	writeln("okay... ",s[i]);
+	HTMLString derp;
 	bool handle() {
-	  static if(unicode) {
-		import std.utf: decode;
-		if(checkEnum!(NamedEscapes, true)(&s[i],app)) return true;
-		if(s[i] > 0x7f) {
-		  size_t num = 0;
-		  auto point = decode(&s[i],num);
-		  app.put("&x");
-		  app.put(to!string(to!uint(point),0x10));
-		  app.put(";");
-		  return true;
-		}
-	  }
 	  static if(html) {
-		if(checkEnum!(HTMLEscapes, true)(&s[i],app)) return true;
+		if(escapeEnum!HTMLEscapes(s[i], derp)) return true;
 	  }
 	  static if(attribute) {
-		if(checkEnum!(AttributeEscapes, true)(&s[i],app)) return true;		
+		if(escapeEnum!AttributeEscapes(s[i], derp)) return true;
 	  }
-	  return false;
+	  static if(!unicode) {
+		return false;
+	  }
+	  if(escapeEnum!NamedEscapes(s[i], derp)) return true;
+	  if(isPrintable(s[i])) return false;
+
+	  if(s[i] < 0x7f) {
+		app.put("&x");
+		app.put(to!string(s[i],0x10));
+		app.put(';');
+		return true;
+	  }
+	  size_t num = 0;
+	  auto point = decode(s[i..min($,i+4)],num);
+	  app.put("&x");
+	  app.put(to!string(to!uint(point),0x10));
+	  app.put(";");
+	  return true;
 	}
-	if(!handle()) {
-	  app.put(s[i]);
+	if(handle()) {
+	  last = i + 1;
 	}
+  }
+  if(last < s.length) {
+	app.put(s[last..$]);
   }
   return app.data;
 }
-	
+
 unittest {
   writeln(escape!(true,true,true)(`<hi>
 
