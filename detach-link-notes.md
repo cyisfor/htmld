@@ -52,3 +52,17 @@ if(B.next) // C
   B.next.prev = E;
 B.next = E;
 ```
+
+in addition to setting, 
+Any time you set next, you have to check old.next.prev, and old.parent.lastChild
+- insertAfter
+- also insertBefore for setting dest.next
+Any time you set prev, you have to check old.prev.next, and old.parent.firstChild
+- insertBefore
+- also insertAfter, for setting dest.prev
+Any time you set parent, you have to check old.parent.firstChild and old.parent.lastChild
+- ??? insertChild? probably never do this. below will both be needed
+Any time you set firstChild you have to check old.parent.firstChild (set it to new.next, set it.prev = new)
+- appendChild
+Any time you set lastChild, you have to check old.parent.lastChild
+- prependChild

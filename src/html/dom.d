@@ -298,12 +298,74 @@ struct Node {
 		return app.data;
 	}
 
-	void prependChild(Node* node) {
-		assert(document_ == node.document_);
-		assert(isElementNode, "cannot prepend to non-element nodes");
+	void removeChild(Node* node) {
+		assert(node.parent_ == &this);
+		node.detach();
+	}
 
-		node.detachFast();
+	void destroyChildren() {
+		auto child = firstChild_;
+		while (child) {
+			auto next = child.next_;
+			child.destroy();
+			child = next;
+		}
 
+		firstChild_ = null;
+		lastChild_ = null;
+	}
+
+  void setNext(Node* target) {
+	if(parent_ && parent_.lastChild_ == &this)
+	  parent_.lastChild_ = target;
+	if(next_)
+	  next_.prev_ = target;
+	next_ = target;
+  }
+  void setPrev(Node* target) {
+	if(parent_ && parent_.firstChild_ == &this)
+	  parent_.firstChild_ = target;
+	if(prev_)
+	  prev_.next_ = target;
+	prev_ = target;
+  }
+  void setFirstChild(Node* target) {
+	if(firstChild_) {
+	  // firstChild_.setPrev!(withoutChecking)(target);
+	  target.next_ = firstChild_;
+	  firstChild_.prev_ = target;
+	  firstChild_ = target;
+	  
+	} else {
+	  firstChild_ = target;
+	  target.prev_ = null;
+	}
+  }
+  void setLastChild(Node* target) {
+	if(lastChild_) {
+	  lastChild_.setNext(target);
+	} else {
+	  lastChild_ = target;
+	  target.next_ = null;
+	}
+  }
+
+  void setParent(Node* target) {
+	if(parent_) {
+	  if(parent_.firstChild_ == &this)
+		parent_.setFirstChild(parent_.firstChild_.next_);
+	  if(parent_.lastChild_ == &this)
+		parent_.setLastChild(parent_.firstChild_.next_);
+	}
+  }
+  
+		
+
+  void prependChild(Node* node) {
+	assert(document_ == node.document_);
+	assert(isElementNode, "cannot prepend to non-element nodes");
+
+	
 		node.parent_ = &this;
 		if (firstChild_) {
 			assert(!firstChild_.prev_);
@@ -337,62 +399,28 @@ struct Node {
 		} else {
 			assert(!firstChild_);
 			firstChild_ = node;
-			firstChild_.prev_ = null;
+			if(firstChild_.prev_) {
+			  firstChild_.prev_.next_ = null;
+			  firstChild_.prev_ = null;
+			}
 			lastChild_ = node;
 		}
-        if(lastChild.next_) {
-            lastChild.next_.prev_ = null;
+        if(lastChild_.next_) {
+            lastChild_.next_.prev_ = null;
             lastChild_.next_ = null;
         }
 	}
 
-	void removeChild(Node* node) {
-		assert(node.parent_ == &this);
-		node.detach();
-	}
+  
+  void prependText(HTMLString text) {
+	// TODO: merge with firstChild_ if firstChild_.isTextNode
+	prependChild(document_.createTextNode(text));
+  }
 
-	void destroyChildren() {
-		auto child = firstChild_;
-		while (child) {
-			auto next = child.next_;
-			child.destroy();
-			child = next;
-		}
-
-		firstChild_ = null;
-		lastChild_ = null;
-	}
-
-	void prependText(HTMLString text) {
-		auto node = document_.createTextNode(text);
-		if (firstChild_) {
-			assert(firstChild_.prev_ == null);
-			firstChild_.prev_ = node;
-			node.next_ = firstChild_;
-			firstChild_ = node;
-		} else {
-			assert(lastChild_ == null);
-			firstChild_ = node;
-			lastChild_ = node;
-		}
-		node.parent_ = &this;
-	}
-
-	void appendText(HTMLString text) {
-		auto node = document_.createTextNode(text);
-		if (lastChild_) {
-			assert(lastChild_.next_ == null);
-			lastChild_.next_ = node;
-			node.prev_ = lastChild_;
-			lastChild_ = node;
-		} else {
-			assert(firstChild_ == null);
-			firstChild_ = node;
-			lastChild_ = node;
-		}
-		lastChild_.next_ = null;
-		node.parent_ = &this;
-	}
+  void appendText(HTMLString text) {
+	// TODO: merge with lastChild_ if lastChild_.isTextNode
+	appendChild(document_.createTextNode(text));
+  }
 
 	void insertBefore(Node* node) {
 		assert(document_ == node.document_);
@@ -413,6 +441,7 @@ struct Node {
 	}
 
 	void insertAfter(Node* node) {
+	  assert(node);
 		assert(document_ == node.document_);
 		detachFast();
 
@@ -458,13 +487,23 @@ struct Node {
 				static if(careful) {
 				  prev_ = null;
 				}
+			  } else {
+				import std.format;
+				import std.stdio;
+				writeln(format("debug me! %x == %x ",
+									parent_.firstChild_,&this));
 			  }
+
+			  // uggh next_ should be non-null too! how is it not happening?
 			  if (next_) {
 				next_.prev_ = prev_;
 				static if(careful) {
 				  next_ = null;
 				}
 			  }
+			}
+			static if(careful) {
+			  parent_ = null;
 			}
 		} else {
 		  static if(careful) {
