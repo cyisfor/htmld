@@ -453,18 +453,18 @@ struct Node {
 				  prev_ = null;
 				}
 			} else {
-				assert(prev_);
-
+			  if(prev_) {
 				prev_.next_ = next_;
 				static if(careful) {
 				  prev_ = null;
 				}
-				if (next_) {
-					next_.prev_ = prev_;
-					static if(careful) {
-					  next_ = null;
-					}
+			  }
+			  if (next_) {
+				next_.prev_ = prev_;
+				static if(careful) {
+				  next_ = null;
 				}
+			  }
 			}
 		} else {
 		  static if(careful) {
