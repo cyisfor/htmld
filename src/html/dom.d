@@ -320,10 +320,6 @@ struct Node {
 	}
 
 	void appendChild(Node* node) {
-		if(document_ != node.document_) {
-			import std.stdio;
-			writeln("oyyy ",document_," ",node.document_);
-		}	
 		assert(document_ == node.document_);
 		assert(isElementNode, "cannot append to non-element nodes");
 
