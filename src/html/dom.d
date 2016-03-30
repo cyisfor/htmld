@@ -313,8 +313,8 @@ struct Node {
 		assert(document_ == node.document_);
 		assert(isElementNode, "cannot prepend to non-element nodes");
 
-		if (node.parent_)
-			node.detach();
+		node.detachFast();
+
 		node.parent_ = &this;
 		if (firstChild_) {
 			assert(!firstChild_.prev_);
@@ -327,15 +327,18 @@ struct Node {
 			lastChild_ = node;
 			lastChild_.next_ = null;
 		}
-		firstChild_.prev_ = null;
+        if(firstChild_.prev_) {
+            firstChild_.prev_.next_ = null;
+            firstChild_.prev_ = null;
+        }
 	}
 
 	void appendChild(Node* node) {
 		assert(document_ == node.document_);
 		assert(isElementNode, "cannot append to non-element nodes");
 
-		if (node.parent_)
-			node.detach();
+		node.detachFast();
+
 		node.parent_ = &this;
 		if (lastChild_) {
 			assert(!lastChild_.next_);
@@ -348,7 +351,10 @@ struct Node {
 			firstChild_.prev_ = null;
 			lastChild_ = node;
 		}
-		lastChild_.next_ = null;
+        if(lastChild.next_) {
+            lastChild.next_.prev_ = null;
+            lastChild_.next_ = null;
+        }
 	}
 
 	void removeChild(Node* node) {
@@ -402,7 +408,8 @@ struct Node {
 	void insertBefore(Node* node) {
 		assert(document_ == node.document_);
 		assert(node);
-		
+		detachFast();
+
 		parent_ = node.parent_;
 		prev_ = node.prev_;
 		next_ = node;
@@ -418,6 +425,7 @@ struct Node {
 
 	void insertAfter(Node* node) {
 		assert(document_ == node.document_);
+		detachFast();
 
 		parent_ = node.parent_;
 		prev_ = node;
@@ -431,82 +439,71 @@ struct Node {
 		}
 	}
 
-	void detach() {
+	private void packageDetach(bool careful)() {
 		if (parent_) {
 			if (parent_.firstChild_ == &this) {
 				parent_.firstChild_ = next_;
 				if (next_) {
 					next_.prev_ = null;
-					next_ = null;
+					static if(careful) {
+					  next_ = null;
+					}
 				} else {
 					parent_.lastChild_ = null;
 				}
 
-				assert(prev_ == null);
+				static if(careful) {
+				  assert(prev_ == null);
+				}
 			} else if (parent_.lastChild_ == &this) {
 				parent_.lastChild_ = prev_;
 				assert(prev_);
-				assert(!next_);
+				assert(next_ is null);
 				prev_.next_ = null;
-				prev_ = null;
+				static if(careful) {
+				  prev_ = null;
+				}
 			} else {
 				assert(prev_);
 
 				prev_.next_ = next_;
+				static if(careful) {
+				  prev_ = null;
+				}
 				if (next_) {
 					next_.prev_ = prev_;
-					next_ = null;
+					static if(careful) {
+					  next_ = null;
+					}
 				}
+			}
+		} else {
+		  static if(careful) {
+			if(prev_) {
+			  prev_.next_ = next_;
+			  static if(careful) {
 				prev_ = null;
+			  }
 			}
-			parent_ = null;
-		} else {
-		  if(prev_) {
-			prev_.next_ = next_;
-		  }
-		  if(next_) {
-			next_.prev_ = prev_;
+			if(next_) {
+			  next_.prev_ = prev_;
+			  static if(careful) {
+				next_ = null;
+			  }
+			}
+		  } else {
+			assert(prev_ is null);
+			assert(next_ is null);
 		  }
 		}
-		prev_ = null;
-		next_ = null;
+	  static if(careful) {
+		assert(prev_ is null);
+		assert(next_ is null);
+	  }
 	}
 
-	package void detachFast() {
-		if (parent_) {
-			if (parent_.firstChild_ == &this) {
-				parent_.firstChild_ = next_;
-				if (next_) {
-					next_.prev_ = null;
-				} else {
-					parent_.lastChild_ = null;
-				}
-
-				assert(prev_ == null);
-			} else if (parent_.lastChild_ == &this) {
-				parent_.lastChild_ = prev_;
-				assert(prev_);
-				assert(!next_);
-				prev_.next_ = null;
-			} else {
-				assert(prev_);
-
-				prev_.next_ = next_;
-				if (next_) {
-					next_.prev_ = prev_;
-				}
-			}
-		} else {
-		  if(prev_) {
-			prev_.next_ = next_;
-		  }
-		  if(next_) {
-			next_.prev_ = prev_;
-		  }
-		}
-		prev_ = null;
-		next_ = null;
-	}
+    public alias detach = packageDetach!true;
+    package alias detachFast = packageDetach!false;
 
 	void destroy() {
 		detachFast();
