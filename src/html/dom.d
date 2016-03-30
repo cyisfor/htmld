@@ -15,12 +15,6 @@ import html.utils;
 
 alias HTMLString = const(char)[];
 
-enum DOMCreateOptions {
-	None = 0,
-	Default = None,
-}
-
-
 enum OnlyElements = "(a) => { return a.isElementNode; }";
 
 
@@ -284,12 +278,12 @@ struct Node {
 		attrs_.remove(name);
 	}
 
-	@property void html(size_t options = DOMCreateOptions.Default)(HTMLString html) {
+	@property void html(HTMLString html) {
 		assert(isElementNode, "cannot add html to non-element nodes");
 
 		destroyChildren();
 		auto builder = DOMBuilder!(Document)(document_, &this);
-		parseHTML!(typeof(builder), parserOptions)(html, builder);
+		parseHTML!(typeof(builder))(html, builder);
 	}
 
 	@property auto html() const {
@@ -534,7 +528,7 @@ struct Node {
 
 				if (value.length) {
 					app.put("=\"");
-					writeHTMLEscaped(app, value);
+					app.put(value);
 					app.put("\"");
 				}
 			}
@@ -606,7 +600,7 @@ struct Node {
 			}
 			break;
 		case Text:
-			writeHTMLEscaped(app, tag_);
+			app.put(tag_);
 			break;
 		case Comment:
 			app.put("<!--");
@@ -853,7 +847,7 @@ public:/*package:*/
 	Document* document_;
 }
 
-auto ref createDocument(size_t options = DOMCreateOptions.Default)(HTMLString source) {
+auto ref createDocument(HTMLString source) {
 	auto document = createDocument();
 	auto builder = DOMBuilder!(Document)(document);
 	parseHTML!(typeof(builder))(source, builder);
@@ -1114,7 +1108,7 @@ unittest {
 	auto cloned = doc.clone(doc.root);
 	assert(cloned.html == src, cloned.html);
 	assert(doc.root.html == src, cloned.html);
-	
+
 	assert(!cloned.find("child").empty);
 	assert(!cloned.find("parent").empty);
 
