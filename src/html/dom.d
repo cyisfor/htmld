@@ -12,7 +12,6 @@ import html.parser;
 import html.alloc;
 import html.utils;
 
-
 alias HTMLString = const(char)[];
 
 enum OnlyElements = "(a) => { return a.isElementNode; }";
@@ -346,10 +345,16 @@ struct Node {
 	node.parent_ = &this;
 	if (firstChild_) {
 	  assert(!firstChild_.prev_);
+	  if(document_.mergeTextNodes &&
+		 firstChild_.isTextNode && node.isTextNode) {
+		firstChild_.tag_ = node.tag_ ~ firstChild_.tag_;
+		node.document_.destroyNode(node);
+		return;
+	  }	  
 	  firstChild_.prev_ = node;
 	  node.next_ = firstChild_;
 	  node.prev_ = null;
-	  firstChild_ = node;
+	  firstChild_ = node;	
 	} else {
 	  assert(!lastChild_);
 	  node.prev_ = node.next_ = null;
@@ -371,6 +376,13 @@ struct Node {
 	node.parent_ = &this;
 	if (lastChild_) {
 	  assert(!lastChild_.next_);
+	  if(document_.mergeTextNodes &&
+		 lastChild_.isTextNode && node.isTextNode) {
+		lastChild_.tag_ = lastChild_.tag_ ~ node.tag_;
+		node.document_.destroyNode(node);
+		return;
+	  }
+
 	  lastChild_.next_ = node;
 	  node.prev_ = lastChild_;
 	  node.next_ = null;
@@ -384,13 +396,19 @@ struct Node {
   }
   
   void prependText(HTMLString text) {
-	// TODO: merge with firstChild_ if firstChild_.isTextNode
-	prependChild(document_.createTextNode(text));
+	if(isElementNode) {
+	  prependChild(document_.createTextNode(text));
+	} else {
+	  tag_ = text ~ tag;
+	}
   }
 
   void appendText(HTMLString text) {
-	// TODO: merge with lastChild_ if lastChild_.isTextNode
-	appendChild(document_.createTextNode(text));
+	if(isElementNode) {
+	  appendChild(document_.createTextNode(text));
+	} else {
+	  tag_ = tag ~ text;
+	}
   }
 
   void insertBefore(Node* node) {
@@ -398,6 +416,12 @@ struct Node {
 	assert(node);
 	derp("insertBefore",node);
 	detachFast();
+	if(document_.mergeTextNodes &&
+	   isTextNode && node.isTextNode) {
+	  node.tag_ = tag_ ~ node.tag_;
+	  document_.destroyNode(&this);
+	  return;
+	}	
 
 	parent_ = node.parent_;
 	prev_ = node.prev_;
@@ -417,7 +441,12 @@ struct Node {
 	assert(document_ == node.document_);
 	derp("insertAfter",node);
 	detachFast();
-
+	if(document_.mergeTextNodes &&
+	   isTextNode && node.isTextNode) {
+	  node.tag_ = node.tag_ ~ tag_;
+	  document_.destroyNode(&this);
+	  return;
+	}	
 	parent_ = node.parent_;
 	next_ = node.next_;
 	prev_ = node;
@@ -492,15 +521,12 @@ struct Node {
 		  static if(careful) {
 			if(prev_) {
 			  prev_.next_ = next_;
-			  static if(careful) {
-				prev_ = null;
-			  }
 			}
 			if(next_) {
 			  next_.prev_ = prev_;
-			  static if(careful) {
-				next_ = null;
-			  }
+			}
+			static if(careful) {
+			  next_ = prev_ = null;
 			}
 		  } else {
 			assert(prev_ is null);
@@ -863,8 +889,8 @@ public:/*package:*/
 	Document* document_;
 }
 
-auto ref createDocument(HTMLString source) {
-	auto document = createDocument();
+auto ref createDocument(HTMLString source, bool mergeTextNodes = true) {
+	auto document = createDocument(mergeTextNodes);
 	auto builder = DOMBuilder!(Document)(document);
 	parseHTML!(typeof(builder))(source, builder);
 	return document;
@@ -918,9 +944,9 @@ unittest {
 
 
 
-static auto ref createDocument() {
+static auto ref createDocument(bool mergeTextNodes = true) {
 	auto document = new Document;
-	document.initialize();
+	document.initialize(mergeTextNodes);
 	document.root(document.createElement("root"));
 	return document;
 }
@@ -992,7 +1018,7 @@ struct Document {
 
 	Document* clone() const {
 		Document* other = new Document;
-		other.initialize();
+		other.initialize(this.mergeTextNodes);
 		other.root(other.clone(this.root_));
 		return other;
 	}
@@ -1104,12 +1130,14 @@ struct Document {
 	}
 
 public:/*private:*/
-	void initialize() {
+	void initialize(bool mergeTextNodes) {
 		alloc_.init;
+		this.mergeTextNodes = mergeTextNodes;
 	}
 
 	Node* root_;
 	PageAllocator!(Node, 1024) alloc_;
+    bool mergeTextNodes;
 }
 
 
