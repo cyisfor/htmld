@@ -215,21 +215,6 @@ enum NodeTypes : ubyte {
 	ProcessingInstruction,
 }
 
-void debugderp(T)(T tag) {
-  import std.stdio;
-  import std.string;
-  import std.algorithm.comparison;
-  writeln(tag
-		  .replace("\n",`\n`)
-		  .replace("\t",`\t`)[0..min($,20)]);
-}
-
-void debugme(T)(T message) {
-  import std.stdio;
-  import std.conv: to;
-  throw new Exception("debug me! "~to!string(message));
-}
-
 struct Node {
 	package this(Document* document, HTMLString tag) {
 		tag_ = tag;
@@ -328,19 +313,9 @@ struct Node {
 		lastChild_ = null;
 	}
 
-  void derp(string message, Node* node) {
-	import std.stdio;
-	writeln(message);
-	debugderp(tag_);
-	writeln(prev_);
-	debugderp(node.tag_);
-	writeln(node.prev_);
-  }
-
   void prependChild(Node* node) {
 	assert(document_ == node.document_);
 	assert(isElementNode, "cannot prepend to non-element nodes");
-	scope(exit) derp("prependChild",node);
 	node.detachFast();
 	node.parent_ = &this;
 	if (firstChild_) {
@@ -366,11 +341,6 @@ struct Node {
   void appendChild(Node* node) {
 	assert(document_ == node.document_);
 	assert(isElementNode, "cannot append to non-element nodes");
-	derp("appendChild",node);
-	if(node.tag_.find("Waking up groggi").length > 0) {
-	  import std.stdio;
-	  writeln("derp");
-	}
 	node.detachFast();
 
 	node.parent_ = &this;
@@ -414,7 +384,6 @@ struct Node {
   void insertBefore(Node* node) {
 	assert(document_ == node.document_);
 	assert(node);
-	derp("insertBefore",node);
 	detachFast();
 	if(document_.mergeTextNodes &&
 	   isTextNode && node.isTextNode) {
@@ -439,7 +408,6 @@ struct Node {
   void insertAfter(Node* node) {
 	assert(node);
 	assert(document_ == node.document_);
-	derp("insertAfter",node);
 	detachFast();
 	if(document_.mergeTextNodes &&
 	   isTextNode && node.isTextNode) {
@@ -494,18 +462,11 @@ struct Node {
 				}
 			} else {
 			  // somewhere in the middle
-			  if(prev_) {
-				prev_.next_ = next_;
-			  } else {
-				debugderp(tag_);
-				debugme("prev_ should be non-null ");
-			  }
-			  // uggh next_ should be non-null too! how is it not happening?
-			  if (next_) {
-				next_.prev_ = prev_;
-			  } else {
-				debugme("next_ should be non-null");
-			  }
+			  assert(prev_,"prev_ should be non-null");
+			  prev_.next_ = next_;
+
+			  assert(next_,"next_ should be non-null");
+			  next_.prev_ = prev_;
 			  
 			  static if(careful) {
 				prev_ = next_ = null;
