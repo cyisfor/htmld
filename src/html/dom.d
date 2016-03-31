@@ -216,6 +216,10 @@ enum NodeTypes : ubyte {
 	ProcessingInstruction,
 }
 
+void debugme(string message) {
+  import std.stdio;
+  writeln("debug me! ",message);
+}
 
 struct Node {
 	package this(Document* document, HTMLString tag) {
@@ -315,102 +319,46 @@ struct Node {
 		lastChild_ = null;
 	}
 
-  void setNext(Node* target) {
-	if(parent_ && parent_.lastChild_ == &this)
-	  parent_.lastChild_ = target;
-	if(next_)
-	  next_.prev_ = target;
-	next_ = target;
-  }
-  void setPrev(Node* target) {
-	if(parent_ && parent_.firstChild_ == &this)
-	  parent_.firstChild_ = target;
-	if(prev_)
-	  prev_.next_ = target;
-	prev_ = target;
-  }
-  void setFirstChild(Node* target) {
-	if(firstChild_) {
-	  // firstChild_.setPrev!(withoutChecking)(target);
-	  target.next_ = firstChild_;
-	  firstChild_.prev_ = target;
-	  firstChild_ = target;
-	  
-	} else {
-	  firstChild_ = target;
-	  target.prev_ = null;
-	}
-  }
-  void setLastChild(Node* target) {
-	if(lastChild_) {
-	  lastChild_.setNext(target);
-	} else {
-	  lastChild_ = target;
-	  target.next_ = null;
-	}
-  }
-
-  void setParent(Node* target) {
-	if(parent_) {
-	  if(parent_.firstChild_ == &this)
-		parent_.setFirstChild(parent_.firstChild_.next_);
-	  if(parent_.lastChild_ == &this)
-		parent_.setLastChild(parent_.firstChild_.next_);
-	}
-  }
-  
-		
-
   void prependChild(Node* node) {
 	assert(document_ == node.document_);
 	assert(isElementNode, "cannot prepend to non-element nodes");
 
+	node.detachFast();
+	node.parent_ = &this;
+	if (firstChild_) {
+	  assert(!firstChild_.prev_);
+	  firstChild_.prev_ = node;
+	  node.next_ = firstChild_;
+	  firstChild_ = node;
+	} else {
+	  assert(!lastChild_);
+	  firstChild_ = node;
+	  lastChild_ = node;
+	  firstChild_.prev_ = null;
+	  lastChild_.next_ = null;
+	}
+  }
+  
+  void appendChild(Node* node) {
+	assert(document_ == node.document_);
+	assert(isElementNode, "cannot append to non-element nodes");
 	
-		node.parent_ = &this;
-		if (firstChild_) {
-			assert(!firstChild_.prev_);
-			firstChild_.prev_ = node;
-			node.next_ = firstChild_;
-			firstChild_ = node;
-		} else {
-			assert(!lastChild_);
-			firstChild_ = node;
-			lastChild_ = node;
-			lastChild_.next_ = null;
-		}
-        if(firstChild_.prev_) {
-            firstChild_.prev_.next_ = null;
-            firstChild_.prev_ = null;
-        }
+	node.detachFast();
+
+	node.parent_ = &this;
+	if (lastChild_) {
+	  assert(!lastChild_.next_);
+	  lastChild_.next_ = node;
+	  node.prev_ = lastChild_;
+	  lastChild_ = node;
+	} else {
+	  assert(!firstChild_);
+	  firstChild_ = node;
+	  lastChild_ = node;
+	  firstChild_.prev_ = null;
+	  lastChild_.next_ = null;
 	}
-
-	void appendChild(Node* node) {
-		assert(document_ == node.document_);
-		assert(isElementNode, "cannot append to non-element nodes");
-
-		node.detachFast();
-
-		node.parent_ = &this;
-		if (lastChild_) {
-			assert(!lastChild_.next_);
-			lastChild_.next_ = node;
-			node.prev_ = lastChild_;
-			lastChild_ = node;
-		} else {
-			assert(!firstChild_);
-			firstChild_ = node;
-			if(firstChild_.prev_) {
-			  firstChild_.prev_.next_ = null;
-			  firstChild_.prev_ = null;
-			}
-			lastChild_ = node;
-		}
-        if(lastChild_.next_) {
-            lastChild_.next_.prev_ = null;
-            lastChild_.next_ = null;
-        }
-	}
-
+  }
   
   void prependText(HTMLString text) {
 	// TODO: merge with firstChild_ if firstChild_.isTextNode
@@ -422,41 +370,46 @@ struct Node {
 	appendChild(document_.createTextNode(text));
   }
 
-	void insertBefore(Node* node) {
-		assert(document_ == node.document_);
-		assert(node);
-		detachFast();
+  void insertBefore(Node* node) {
+	assert(document_ == node.document_);
+	assert(node);
+	detachFast();
 
-		parent_ = node.parent_;
-		prev_ = node.prev_;
-		next_ = node;
-		node.prev_ = &this;
+	parent_ = node.parent_;
+	prev_ = node.prev_;
+	next_ = node;
+	node.prev_ = &this;
 
-		if (parent_ && (parent_.firstChild_ == node)) {
-		  assert(!prev_);
-		  parent_.firstChild_ = &this;
-		} else if(prev_) {
-		  prev_.next_ = &this;
-		}
+	if (parent_ && (parent_.firstChild_ == node)) {
+	  assert(!prev_);
+	  parent_.firstChild_ = &this;
+	} else if(prev_) {
+	  prev_.next_ = &this;
 	}
+  }
 
-	void insertAfter(Node* node) {
-	  assert(node);
-		assert(document_ == node.document_);
-		detachFast();
+  void insertAfter(Node* node) {
+	assert(node);
+	assert(document_ == node.document_);
+	detachFast();
 
-		parent_ = node.parent_;
-		prev_ = node;
-		next_ = node.next_;
-		node.next_ = &this;
-		if(parent_ && (parent_.lastChild_ == node)) {
-		  assert(!next_);
-		  parent_.lastChild_ = &this;
-		} else if(next_) {
-		  next_.prev_ = &this;
-		}
+	parent_ = node.parent_;
+	next_ = node.next_;
+	prev_ = node;
+	node.next_ = &this;
+
+	if(parent_ && (parent_.lastChild_ == node)) {
+	  assert(!next_);
+	  parent_.lastChild_ = &this;
+	} else if(next_) {
+	  next_.prev_ = &this;
 	}
+  }
 
+  /* !careful => detach everything else, but leave our pointers pointing
+	 old places.
+	 careful => set our pointers to null
+  */
 	private void packageDetach(bool careful)() {
 		if (parent_) {
 			if (parent_.firstChild_ == &this) {
@@ -488,10 +441,7 @@ struct Node {
 				  prev_ = null;
 				}
 			  } else {
-				import std.format;
-				import std.stdio;
-				writeln(format("debug me! %x == %x ",
-									parent_.firstChild_,&this));
+				debugme("prev_ should be non-null");
 			  }
 
 			  // uggh next_ should be non-null too! how is it not happening?
@@ -500,12 +450,16 @@ struct Node {
 				static if(careful) {
 				  next_ = null;
 				}
+			  } else {
+				debugme("next_ should be non-null");
 			  }
 			}
 			static if(careful) {
 			  parent_ = null;
 			}
 		} else {
+		  // when not being careful, let's just assume a parentless node
+		  // was just created, so shall have no next or prev to check.
 		  static if(careful) {
 			if(prev_) {
 			  prev_.next_ = next_;
@@ -525,6 +479,8 @@ struct Node {
 		  }
 		}
 	  static if(careful) {
+		// just making sure no non-nulls slip through when we're being
+		// careful.
 		assert(prev_ is null);
 		assert(next_ is null);
 	  }
