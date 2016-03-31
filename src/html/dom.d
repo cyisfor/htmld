@@ -363,7 +363,8 @@ struct Node {
 	assert(isElementNode, "cannot append to non-element nodes");
 	derp("appendChild",node);
 	if(node.tag_.find("Waking up groggi").length > 0) {
-	  debugme("derp");
+	  import std.stdio;
+	  writeln("derp");
 	}
 	node.detachFast();
 
@@ -466,23 +467,21 @@ struct Node {
 			  // somewhere in the middle
 			  if(prev_) {
 				prev_.next_ = next_;
-				static if(careful) {
-				  prev_ = null;
-				}
 			  } else {
 				debugderp(tag_);
 				debugme("prev_ should be non-null ");
 			  }
-
 			  // uggh next_ should be non-null too! how is it not happening?
 			  if (next_) {
 				next_.prev_ = prev_;
-				static if(careful) {
-				  next_ = null;
-				}
 			  } else {
 				debugme("next_ should be non-null");
 			  }
+			  
+			  static if(careful) {
+				prev_ = next_ = null;
+			  }
+
 			}
 			static if(careful) {
 			  parent_ = null;
