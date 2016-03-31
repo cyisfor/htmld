@@ -407,6 +407,9 @@ struct Node {
 
   void insertAfter(Node* node) {
 	assert(node);
+    assert(node.parent_);
+    // can't insert into a parentless node
+    // since we're assuming in detachFast that !parent implies !prev
 	assert(document_ == node.document_);
 	detachFast();
 	if(document_.mergeTextNodes &&
@@ -414,7 +417,7 @@ struct Node {
 	  node.tag_ = node.tag_ ~ tag_;
 	  document_.destroyNode(&this);
 	  return;
-	}	
+	}
 	parent_ = node.parent_;
 	next_ = node.next_;
 	prev_ = node;
@@ -490,7 +493,7 @@ struct Node {
 			  next_ = prev_ = null;
 			}
 		  } else {
-			assert(prev_ is null);
+			assert(prev_ is null); 
 			assert(next_ is null);
 		  }
 		}
