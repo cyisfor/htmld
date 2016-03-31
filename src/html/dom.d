@@ -216,9 +216,19 @@ enum NodeTypes : ubyte {
 	ProcessingInstruction,
 }
 
-void debugme(string message) {
+void debugderp(T)(T tag) {
   import std.stdio;
-  writeln("debug me! ",message);
+  import std.string;
+  import std.algorithm.comparison;
+  writeln(tag
+		  .replace("\n",`\n`)
+		  .replace("\t",`\t`)[0..min($,20)]);
+}
+
+void debugme(T)(T message) {
+  import std.stdio;
+  import std.conv: to;
+  throw new Exception("debug me! "~to!string(message));
 }
 
 struct Node {
@@ -319,30 +329,42 @@ struct Node {
 		lastChild_ = null;
 	}
 
+  void derp(string message, Node* node) {
+	import std.stdio;
+	writeln(message);
+	debugderp(tag_);
+	writeln(prev_);
+	debugderp(node.tag_);
+	writeln(node.prev_);
+  }
+
   void prependChild(Node* node) {
 	assert(document_ == node.document_);
 	assert(isElementNode, "cannot prepend to non-element nodes");
-
+	scope(exit) derp("prependChild",node);
 	node.detachFast();
 	node.parent_ = &this;
 	if (firstChild_) {
 	  assert(!firstChild_.prev_);
 	  firstChild_.prev_ = node;
 	  node.next_ = firstChild_;
+	  node.prev_ = null;
 	  firstChild_ = node;
 	} else {
 	  assert(!lastChild_);
+	  node.prev_ = node.next_ = null;
 	  firstChild_ = node;
 	  lastChild_ = node;
-	  firstChild_.prev_ = null;
-	  lastChild_.next_ = null;
 	}
   }
   
   void appendChild(Node* node) {
 	assert(document_ == node.document_);
 	assert(isElementNode, "cannot append to non-element nodes");
-	
+	derp("appendChild",node);
+	if(node.tag_.find("Waking up groggi").length > 0) {
+	  debugme("derp");
+	}
 	node.detachFast();
 
 	node.parent_ = &this;
@@ -350,13 +372,13 @@ struct Node {
 	  assert(!lastChild_.next_);
 	  lastChild_.next_ = node;
 	  node.prev_ = lastChild_;
+	  node.next_ = null;
 	  lastChild_ = node;
 	} else {
 	  assert(!firstChild_);
+	  node.prev_ = node.next_ = null;
 	  firstChild_ = node;
 	  lastChild_ = node;
-	  firstChild_.prev_ = null;
-	  lastChild_.next_ = null;
 	}
   }
   
@@ -373,6 +395,7 @@ struct Node {
   void insertBefore(Node* node) {
 	assert(document_ == node.document_);
 	assert(node);
+	derp("insertBefore",node);
 	detachFast();
 
 	parent_ = node.parent_;
@@ -391,6 +414,7 @@ struct Node {
   void insertAfter(Node* node) {
 	assert(node);
 	assert(document_ == node.document_);
+	derp("insertAfter",node);
 	detachFast();
 
 	parent_ = node.parent_;
@@ -413,6 +437,7 @@ struct Node {
 	private void packageDetach(bool careful)() {
 		if (parent_) {
 			if (parent_.firstChild_ == &this) {
+			  assert(prev_ is null);
 				parent_.firstChild_ = next_;
 				if (next_) {
 					next_.prev_ = null;
@@ -427,21 +452,26 @@ struct Node {
 				  assert(prev_ == null);
 				}
 			} else if (parent_.lastChild_ == &this) {
+			  assert(next_ is null);
 				parent_.lastChild_ = prev_;
-				assert(prev_);
-				assert(next_ is null);
-				prev_.next_ = null;
-				static if(careful) {
-				  prev_ = null;
+				if (prev_) {
+					prev_.next_ = null;
+					static if(careful) {
+					  prev_ = null;
+					}
+				} else {
+				  parent_.firstChild_ = null;
 				}
 			} else {
+			  // somewhere in the middle
 			  if(prev_) {
 				prev_.next_ = next_;
 				static if(careful) {
 				  prev_ = null;
 				}
 			  } else {
-				debugme("prev_ should be non-null");
+				debugderp(tag_);
+				debugme("prev_ should be non-null ");
 			  }
 
 			  // uggh next_ should be non-null too! how is it not happening?
