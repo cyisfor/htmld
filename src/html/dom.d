@@ -16,7 +16,6 @@ alias HTMLString = const(char)[];
 
 enum OnlyElements = "(a) => { return a.isElementNode; }";
 
-
 package NodeWrapper!T wrap(T)(T* node) {
 	return NodeWrapper!T(node);
 }
@@ -1272,7 +1271,6 @@ public:/*private:*/
 	HTMLString text_;
 }
 
-
 private struct Rule {
 	enum Flags : ushort {
 		HasTag          = 1 << 0,
@@ -1372,62 +1370,62 @@ private struct Rule {
 
 		if (flags_ & Flags.HasPseudo) {
 			switch (pseudo_) {
-			case hashOf("checked"):
+			case "checked":
 				if (!element.hasAttr("checked"))
 					return false;
 				break;
 
-			case hashOf("enabled"):
+			case "enabled":
 				if (element.hasAttr("disabled"))
 					return false;
 				break;
 
-			case hashOf("disabled"):
+			case "disabled":
 				if (!element.hasAttr("disabled"))
 					return false;
 				break;
 
-			case hashOf("empty"):
+			case "empty":
 				if (element.firstChild_)
 					return false;
 				break;
 
-			case hashOf("optional"):
+			case "optional":
 				if (element.hasAttr("required"))
 					return false;
 				break;
 
-			case hashOf("read-only"):
+			case "read-only":
 				if (!element.hasAttr("readonly"))
 					return false;
 				break;
 
-			case hashOf("read-write"):
+			case "read-write":
 				if (element.hasAttr("readonly"))
 					return false;
 				break;
 
-			case hashOf("required"):
+			case "required":
 				if (!element.hasAttr("required"))
 					return false;
 				break;
 
-			case hashOf("lang"):
+			case "lang":
 				if (element.attr("lang") != pseudoArg_)
 					return false;
 				break;
 
-			case hashOf("first-child"):
+			case "first-child":
 				if (!element.parent_ || (element.parent_.firstChild != element))
 					return false;
 				break;
 
-			case hashOf("last-child"):
+			case "last-child":
 				if (!element.parent_ || (element.parent_.lastChild != element))
 					return false;
 				break;
 
-			case hashOf("first-of-type"):
+			case "first-of-type":
 				auto sibling = element.previousSibling;
 				while (sibling) {
 					if (sibling.isElementNode && sibling.tag.equalsCI(element.tag))
@@ -1436,7 +1434,7 @@ private struct Rule {
 				}
 				break;
 
-			case hashOf("last-of-type"):
+			case "last-of-type":
 				auto sibling = element.nextSibling;
 				while (sibling) {
 					if (sibling.isElementNode && sibling.tag.equalsCI(element.tag))
@@ -1445,7 +1443,7 @@ private struct Rule {
 				}
 				break;
 
-			case hashOf("nth-child"):
+			case "nth-child":
 				auto ith = 1;
 				auto sibling = element.previousSibling;
 				while (sibling) {
@@ -1459,7 +1457,7 @@ private struct Rule {
 					return false;
 				break;
 
-			case hashOf("nth-last-child"):
+			case "nth-last-child":
 				auto ith = 1;
 				auto sibling = element.nextSibling;
 				while (sibling) {
@@ -1473,7 +1471,7 @@ private struct Rule {
 					return false;
 				break;
 
-			case hashOf("nth-of-type"):
+			case "nth-of-type":
 				auto ith = 1;
 				auto sibling = element.previousSibling;
 				while (sibling) {
@@ -1487,7 +1485,7 @@ private struct Rule {
 					return false;
 				break;
 
-			case hashOf("nth-last-of-type"):
+			case "nth-last-of-type":
 				auto ith = 1;
 				auto sibling = element.nextSibling;
 				while (sibling) {
@@ -1501,7 +1499,7 @@ private struct Rule {
 					return false;
 				break;
 
-			case hashOf("only-of-type"):
+			case "only-of-type":
 				auto sibling = element.previousSibling;
 				while (sibling) {
 					if (sibling.isElementNode && sibling.tag.equalsCI(element.tag))
@@ -1516,7 +1514,7 @@ private struct Rule {
 				}
 				break;
 
-			case hashOf("only-child"):
+			case "only-child":
 				auto parent = element.parent_;
 				if (!parent)
 					return false;
@@ -1544,7 +1542,7 @@ public:/*package:*/
 	ushort flags_;
 	MatchType match_;
 	Relation relation_;
-	size_t pseudo_;
+	string pseudo_;
 	HTMLString tag_;
 	HTMLString attr_;
 	HTMLString value_;
@@ -1803,7 +1801,7 @@ struct Selector {
 				if (ptr == end)
 					continue;
 
-				rule.pseudo_ = hashOf(start[0..ptr-start]);
+				rule.pseudo_ = to!string(start[0..ptr-start]);
 				rule.flags_ |= Rule.Flags.HasPseudo;
 				if (*ptr != '(') {
 					state = PostIdentifier;
